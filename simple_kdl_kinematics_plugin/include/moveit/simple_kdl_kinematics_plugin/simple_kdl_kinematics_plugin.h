@@ -1,0 +1,366 @@
+/*********************************************************************
+ * Software License Agreement (BSD License)
+ *
+ *  Copyright (c) 2012, Willow Garage, Inc.
+ *  All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted provided that the following conditions
+ *  are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the following
+ *     disclaimer in the documentation and/or other materials provided
+ *     with the distribution.
+ *   * Neither the name of Willow Garage nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ *********************************************************************/
+
+/* Author: Dave Coleman, Sachin Chitta, David Lu!!, Ugo Cupcic */
+
+#ifndef MOVEIT_ROS_PLANNING_KDL_KINEMATICS_PLUGIN_
+#define MOVEIT_ROS_PLANNING_KDL_KINEMATICS_PLUGIN_
+
+// ROS
+#include <ros/ros.h>
+
+// System
+#include <boost/shared_ptr.hpp>
+
+// ROS msgs
+#include <geometry_msgs/PoseStamped.h>
+#include <moveit_msgs/GetPositionFK.h>
+#include <moveit_msgs/GetPositionIK.h>
+#include <moveit_msgs/GetKinematicSolverInfo.h>
+#include <moveit_msgs/MoveItErrorCodes.h>
+
+// KDL
+#include "kdl/jacobian.hpp" // load this here so that it overrides the version from kdl_urdf_parser
+#include "kdl/chainfksolverpos_recursive.hpp" // forward kinematics
+#include "kdl/ik_solver_vel_pinv_nso.hpp" // customized ik generalize pseudo inverse
+#include "kdl/chain.hpp"
+#include "kdl/frames.hpp"
+#include "kdl/jntarray.hpp"
+
+// MoveIt!
+#include <moveit/kinematics_base/kinematics_base.h>
+#include <moveit/robot_model/robot_model.h>
+#include <moveit/robot_state/robot_state.h>
+
+namespace simple_kdl_kinematics_plugin
+{
+/**
+ * @brief Specific implementation of kinematics using KDL. This version can be used with any robot.
+ */
+class SimpleKDLKinematicsPlugin : public kinematics::KinematicsBase
+{
+public:
+
+  /**
+   *  @brief Default constructor
+   */
+  SimpleKDLKinematicsPlugin();
+
+  virtual bool getPositionIK(const geometry_msgs::Pose &ik_pose,
+    const std::vector<double> &ik_seed_state,
+    std::vector<double> &solution,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const
+  {
+    const IKCallbackFn solution_callback = 0;
+    std::vector<double> consistency_limits;
+
+    return searchPositionIK(ik_pose,
+      ik_seed_state,
+      default_timeout_,
+      solution,
+      solution_callback,
+      error_code,
+      consistency_limits,
+      options);
+  }
+
+  virtual bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+    const std::vector<double> &ik_seed_state,
+    double timeout,
+    std::vector<double> &solution,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const
+  {
+    const IKCallbackFn solution_callback = 0;
+    std::vector<double> consistency_limits;
+
+    return searchPositionIK(ik_pose,
+      ik_seed_state,
+      timeout,
+      solution,
+      solution_callback,
+      error_code,
+      consistency_limits,
+      options);
+  }
+
+  virtual bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+    const std::vector<double> &ik_seed_state,
+    double timeout,
+    const std::vector<double> &consistency_limits,
+    std::vector<double> &solution,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const
+  {
+    const IKCallbackFn solution_callback = 0;
+    return searchPositionIK(ik_pose,
+      ik_seed_state,
+      timeout,
+      solution,
+      solution_callback,
+      error_code,
+      consistency_limits,
+      options);
+  }
+
+  virtual bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+    const std::vector<double> &ik_seed_state,
+    double timeout,
+    std::vector<double> &solution,
+    const IKCallbackFn &solution_callback,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const
+  {
+    std::vector<double> consistency_limits;
+    return searchPositionIK(ik_pose,
+      ik_seed_state,
+      timeout,
+      solution,
+      solution_callback,
+      error_code,
+      consistency_limits,
+      options);
+  }
+
+  virtual bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+    const std::vector<double> &ik_seed_state,
+    double timeout,
+    const std::vector<double> &consistency_limits,
+    std::vector<double> &solution,
+    const IKCallbackFn &solution_callback,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const
+  {
+    return searchPositionIK(ik_pose,
+      ik_seed_state,
+      timeout,
+      solution,
+      solution_callback,
+      error_code,
+      consistency_limits,
+      options);
+  }
+
+  virtual bool getPositionFK(const std::vector<std::string> &link_names,
+    const std::vector<double> &joint_angles,
+    std::vector<geometry_msgs::Pose> &poses) const;
+
+  virtual bool initialize(const std::string &robot_description,
+    const std::string &group_name,
+    const std::string &base_name,
+    const std::string &tip_frame,
+    double search_discretization)
+  {
+    std::vector<std::string> tip_frames;
+    tip_frames.push_back(tip_frame);
+    initialize(robot_description, group_name, base_name, tip_frames, search_discretization);
+  }
+ 
+  virtual bool initialize(const std::string &robot_description,
+    const std::string &group_name,
+    const std::string &base_name,
+    const std::vector<std::string>& tip_frames,
+    double search_discretization);
+
+  /**
+   * @brief  Return all the joint names in the order they are used internally
+   */
+  const std::vector<std::string>& getJointNames() const
+  {
+    return ik_group_info_.joint_names;
+  }
+
+  /**
+   * @brief  Return all the link names in the order they are represented internally
+   */
+  const std::vector<std::string>& getLinkNames() const
+  {
+    return ik_group_info_.link_names;
+  }
+  /**
+   * \brief Check if this solver supports a given JointModelGroup.
+   *
+   * Override this function to check if your kinematics solver
+   * implementation supports the given group.
+   *
+   * The default implementation just returns jmg->isChain(), since
+   * solvers written before this function was added all supported only
+   * chain groups.
+   *
+   * \param jmg the planning group being proposed to be solved by this IK solver
+   * \param error_text_out If this pointer is non-null and the group is
+   *          not supported, this is filled with a description of why it's not
+   *          supported.
+   * \return True if the group is supported, false if not.
+   */
+  const bool supportsGroup(const moveit::core::JointModelGroup *jmg, std::string* error_text_out = NULL) const;
+
+protected:
+
+  /**
+   * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
+   * This particular method is intended for "searching" for a solutions by stepping through the redundancy
+   * (or other numerical routines).
+   * @param ik_pose the desired pose of the link
+   * @param ik_seed_state an initial guess solution for the inverse kinematics
+   * @param timeout The amount of time (in seconds) available to the solver
+   * @param solution the solution vector
+   * @param solution_callback A callback solution for the IK solution
+   * @param error_code an error code that encodes the reason for failure or success
+   * @param check_consistency Set to true if consistency check needs to be performed
+   * @param consistency_limit The returned solutuion will contain a value for the redundant joint in the range [seed_state(redundancy_limit)-consistency_limit,seed_state(redundancy_limit)+consistency_limit]
+   * @return True if a valid solution was found, false otherwise
+   */
+  bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+    const std::vector<double> &ik_seed_state,
+    double timeout,
+    std::vector<double> &solution,
+    const IKCallbackFn &solution_callback,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const std::vector<double> &consistency_limits,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const
+  {
+    // Convert single pose into a vector of one pose
+    std::vector<geometry_msgs::Pose> ik_poses;
+    ik_poses.push_back(ik_pose);
+
+    return searchPositionIK(ik_poses,
+      ik_seed_state,
+      timeout,
+      consistency_limits,
+      solution,
+      solution_callback,
+      error_code,
+      options);
+  }
+
+  /**
+   * @brief Given a set of desired poses for a planning group with multiple end-effectors, search for the joint angles
+   * required to reach them. This is useful for e.g. biped robots that need to perform whole-body IK.
+   * Not necessary for most robots that have kinematic chains.
+   * This particular method is intended for "searching" for a solutions by stepping through the redundancy
+   * (or other numerical routines).
+   * @param ik_poses the desired pose of each tip link
+   * @param ik_seed_state an initial guess solution for the inverse kinematics
+   * @param timeout The amount of time (in seconds) available to the solver
+   * @param consistency_limits the distance that any joint in the solution can be from the corresponding joints in the current seed state
+   * @param solution the solution vector
+   * @param solution_callback A callback solution for the IK solution
+   * @param error_code an error code that encodes the reason for failure or success
+   * @param options container for other IK options
+   * @param context_state (optional) the context in which this request
+   *        is being made.  The position values corresponding to
+   *        joints in the current group may not match those in
+   *        ik_seed_state.  The values in ik_seed_state are the ones
+   *        to use.  This is passed just to provide the \em other
+   *        joint values, in case they are needed for context, like
+   *        with an IK solver that computes a balanced result for a
+   *        biped.
+   * @return True if a valid solution was found, false otherwise
+   */
+  virtual bool searchPositionIK(const std::vector<geometry_msgs::Pose> &ik_poses,
+    const std::vector<double> &ik_seed_state,
+    double timeout,
+    const std::vector<double> &consistency_limits,
+    std::vector<double> &solution,
+    const IKCallbackFn &solution_callback,
+    moveit_msgs::MoveItErrorCodes &error_code,
+    const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions(),
+    const moveit::core::RobotState* context_state = NULL) const;
+
+private:
+
+  bool timedOut(const ros::WallTime &start_time, double duration) const;
+
+  /**
+   * \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
+   *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account.
+   */
+  int cartesionToJoint(const KDL::JntArray& q_init, const KDL::Frame& p_in, KDL::JntArray& q_out,
+    KDL::ChainFkSolverPos& fksolver, KDL::IkSolverVel_pinv_nso& iksolver) const;
+
+  /** @brief Check whether the solution lies within the consistency limit of the seed state
+   *  @param seed_state Seed state
+   *  @param consistency_limit The returned state for redundant joint should be in the range [seed_state(redundancy_limit)-consistency_limit,seed_state(redundancy_limit)+consistency_limit]
+   *  @param solution solution configuration
+   *  @return true if check succeeds
+   */
+  bool checkConsistency(const KDL::JntArray& seed_state,
+    const std::vector<double> &consistency_limit,
+    const KDL::JntArray& solution) const;
+
+  int getJointIndex(const std::string &name) const;
+
+  int getKDLSegmentIndex(const std::string &name) const;
+
+
+  /**
+   * \brief A wrapper for robot_state's setToRandomPositions function, for use with KDL
+   */
+  void getRandomConfiguration(KDL::JntArray &jnt_array) const;
+
+  /** @brief Get a random configuration within joint limits close to the seed state
+   *  @param seed_state Seed state
+   *  @param consistency_limit The returned state will contain a value for the redundant joint in the range [seed_state(redundancy_limit)-consistency_limit,seed_state(redundancy_limit)+consistency_limit]
+   *  @param jnt_array Returned random configuration
+   */
+  void getRandomConfiguration(const KDL::JntArray& seed_state,
+    const std::vector<double> &consistency_limits,
+    KDL::JntArray &jnt_array) const;
+
+
+
+  moveit_msgs::KinematicSolverInfo ik_group_info_; /** Stores information for the inverse kinematics solver */
+
+  moveit_msgs::KinematicSolverInfo fk_group_info_; /** Store information for the forward kinematics solver */
+
+  std::vector<KDL::Chain> kdl_chains_;
+
+  unsigned int dimension_; /** Dimension of the group */
+
+  KDL::JntArray joint_min_, joint_max_; /** Joint limits */
+
+  robot_model::RobotModelPtr robot_model_;
+
+  robot_state::RobotStatePtr robot_state_;
+
+  robot_model::JointModelGroup* joint_model_group_;
+  int max_solver_iterations_;
+  double epsilon_;
+
+};
+}
+
+#endif
