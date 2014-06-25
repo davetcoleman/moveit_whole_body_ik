@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2012, Willow Garage, Inc.
+ *  Copyright (c) 2014, JSK, The University of Tokyo.
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +14,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Willow Garage nor the names of its
+ *   * Neither the name of the JSK, The University of Tokyo nor the names of its
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -32,10 +32,12 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-/* Author: Dave Coleman, Sachin Chitta, David Lu!!, Ugo Cupcic */
+/* Author: Dave Coleman
+   Desc:   Non-chain IK solver
+*/
 
-#ifndef MOVEIT_ROS_PLANNING_KDL_KINEMATICS_PLUGIN_
-#define MOVEIT_ROS_PLANNING_KDL_KINEMATICS_PLUGIN_
+#ifndef MOVEIT_WHOLE_BODY_IK__PLANNING_KDL_KINEMATICS_PLUGIN_
+#define MOVEIT_WHOLE_BODY_IK__PLANNING_KDL_KINEMATICS_PLUGIN_
 
 // ROS
 #include <ros/ros.h>
