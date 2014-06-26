@@ -25,44 +25,54 @@
 namespace KDL
 {
 
-IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(const std::vector<Chain>& _chains, JntArray _opt_pos, JntArray _weights,
-  double _eps, int _maxiter, double _alpha, int _num_tips):
+IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const std::vector<Chain>& _chains, JntArray _opt_pos, JntArray _weights,
+  double _eps, int _maxiter, double _alpha, bool _verbose):
   chains(_chains),
-  jnt2jac(chains, 7),
+  jnt2jac(chains, _num_joints, _verbose), // TODO num joints was 7, now its 14, is that ok?
   // Load the jacobian to have #joint ROWS x #tips COLS
-  jacobian(_opt_pos.rows(), _num_tips*6),
+  jacobian(_num_joints, _num_tips*6),
   svd(jacobian),
-  U(_num_tips*6,JntArray(_opt_pos.rows())),
-  S(_opt_pos.rows()),
-  V(_opt_pos.rows(), JntArray(_opt_pos.rows())),
-  tmp(_opt_pos.rows()),
-  tmp2(_opt_pos.rows()-6), // TODO remove this 6?
+  U(_num_tips*6,JntArray(_num_joints)),
+  S(_num_joints),
+  V(_num_joints, JntArray(_num_joints)),
+  tmp(_num_joints),
+  tmp2(_num_joints-6), // TODO remove this 6?
   eps(_eps),
   maxiter(_maxiter),
   alpha(_alpha),
   num_tips(_num_tips),
   weights(_weights),
-  opt_pos(_opt_pos)
+  opt_pos(_opt_pos),
+  verbose(_verbose)
 {
-  std::cout << "CREATED JACOBIAN WITH " << opt_pos.rows() << " columns and " << _num_tips * 6<< " rows " << std::endl;
-
-  SetToZero(jacobian);
-  jacobian.print();
+  //std::cout << "CREATED JACOBIAN WITH " << opt_pos.rows() << " columns and " << _num_tips * 6<< " rows " << std::endl;
+  //SetToZero(jacobian);
+  //jacobian.print();
 }
 
-int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, JntArray& qdot_out)
+/**
+ * \param q_in - current joint location, (?? = this allows us to linearize the jacobian around its current state)
+ * \param v_in - the difference between desired pose and current pose
+ * \param qdot_out - velocity (delta q) - change in joint values
+ */
+int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, JntArray& qdot_out)
 {
   //Let the ChainJntToJacSolver calculate the jacobian "jac" for
   //the current joint positions "q_in"
   jnt2jac.JntToJac(q_in,jacobian);
 
-  std::cout << "Resulting Combined Jacobian:" << std::endl;
-  jacobian.print();
+  if (verbose)
+  {
+    std::cout << "Resulting Combined Jacobian:" << std::endl;
+    jacobian.print();
+  }
 
   //Do a singular value decomposition of "jacobian" with maximum
   //iterations "maxiter", put the results in "U", "S" and "V"
   //jacobian = U*S*Vt
-  std::cout << "Singular value decomposition: " << std::endl;
+  if (verbose)
+    std::cout << "Singular value decomposition: " << std::endl;
+
   int ret = svd.calculate(jacobian,U,S,V,maxiter);
 
   double sum;
@@ -72,24 +82,29 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, Jnt
   // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
   // qdot_out = V*S_pinv*Ut*v_in
 
-  std::cout << "First we calculate Ut*v_in " << std::endl;
-  //first we calculate Ut*v_in
+  if (verbose)
+    std::cout << "First we calculate Ut*v_in " << std::endl;
+
+  //first we calculate S_pinv*Ut*v_in
   for (i=0;i<jacobian.columns();i++)
   {
     sum = 0.0;
     for (j=0;j<jacobian.rows();j++)
     {
-      std::cout << "debug " << std::endl;
-      std::cout << "U " <<  U[j](i) << std::endl;
-      std::cout << "j " << j << std::endl;
-      std::cout << "v_in " << v_in(j) << std::endl;
       sum += U[j](i) * v_in(j);
-      std::cout << "sum " << sum << std::endl << std::endl;
     }
     //If the singular value is too small (<eps), don't invert it but
     //set the inverted singular value to zero (truncated svd)
-    tmp(i) = sum*(fabs(S(i))<eps?0.0:1.0/S(i));
+    if ( fabs(S(i))<eps ) 
+    {
+      tmp(i) = 0.0 ;
+    }
+    else 
+    {
+      tmp(i) = sum/S(i) ;
+    }
   }
+
   //tmp is now: tmp=S_pinv*Ut*v_in, we still have to premultiply
   //it with V to get qdot_out
   for (i=0;i<jacobian.columns();i++)
@@ -109,23 +124,33 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, Jnt
     tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
 
   //Vtn*tmp
-  for (i=jacobian.rows()+1;i<jacobian.columns();i++)
+  for (i = jacobian.rows()+1;i<jacobian.columns();i++)
   {
     tmp2(i-(jacobian.rows()+1)) = 0.0;
-    for (j=0;j<jacobian.columns();j++)
+    for (j = 0;j<jacobian.columns();j++)
     {
-      tmp2(i-(jacobian.rows()+1)) +=V[j](i)*tmp(j);
+      tmp2(i-(jacobian.rows()+1)) += V[j](i)*tmp(j);
     }
   }
 
-  for (i=0;i<jacobian.columns();i++)
+  for (i = 0;i<jacobian.columns();i++)
   {
     sum = 0.0;
-    for (j=jacobian.rows()+1;j<jacobian.columns();j++)
+    for (j = jacobian.rows()+1;j<jacobian.columns();j++)
     {
-      sum +=V[i](j)*tmp2(j);
+      sum += V[i](j)*tmp2(j);
     }
-    qdot_out(i) += alpha*sum;
+    // TODO renable this- dtc
+    //qdot_out(i) += alpha*sum;
+  }
+
+  if (verbose)
+  {
+    std::cout << "Final Solution: " << std::endl;
+    for (std::size_t i = 0; i < qdot_out.rows(); ++i)
+    {
+      std::cout << "Joint " << i << ": " << qdot_out(i) << std::endl;
+    }
   }
 
   //return the return value of the svd decomposition

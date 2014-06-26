@@ -34,7 +34,7 @@ Jacobian2d::Jacobian2d()
 Jacobian2d::Jacobian2d(unsigned int nr_of_columns, unsigned int nr_of_rows):
   data(nr_of_rows,nr_of_columns)
 {
-  std::cout << " > 2D Jacobian created of " << nr_of_rows << " rows by " << nr_of_columns << " cols " << std::endl;
+  //std::cout << " > 2D Jacobian created of " << nr_of_rows << " rows by " << nr_of_columns << " cols " << std::endl;
 }
 
 Jacobian2d::Jacobian2d(const Jacobian2d& arg):
@@ -157,12 +157,23 @@ void Jacobian2d::setColumn(unsigned int i,const Twist& t){
 void Jacobian2d::print() const
 {
   std::cout << "------------ " << rows() << " rows by " << columns() << " cols --------------- " << std::endl;
+  std::cout << "[" << std::endl;
   for (std::size_t i = 0; i < rows(); ++i)
   {
+    std::cout << "[";
     for (std::size_t j = 0; j < columns(); ++j)
     {
-      std::cout << data(i,j) << ", ";
+      std::cout << data(i,j);
+
+      if (j < columns() - 1)
+        std::cout << ",";
     }
+    std::cout << "]";
+
+    // close the whole matrix
+    if (i == rows() - 1)
+      std::cout << "]";
+
     std::cout << std::endl;
   }
 }

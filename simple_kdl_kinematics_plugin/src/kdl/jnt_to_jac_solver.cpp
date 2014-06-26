@@ -25,9 +25,10 @@
 
 namespace KDL
 {
-JntToJacSolver::JntToJacSolver(const std::vector<Chain>& _chains, int num_joints):
-  chains(_chains),locked_joints_(num_joints,false),
-  nr_of_unlocked_joints_(num_joints)
+JntToJacSolver::JntToJacSolver(const std::vector<Chain>& _chains, int _num_joints, bool _verbose):
+  chains(_chains),locked_joints_(_num_joints,false),
+  nr_of_unlocked_joints_(_num_joints),
+  verbose(_verbose)
 {
 }
 
@@ -51,14 +52,17 @@ int JntToJacSolver::setLockedJoints(const std::vector<bool> locked_joints)
 
 int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
 {
-  std::cout << "Starting jnt to jac with "<< chains.size() << " chains and input joint array of size " 
-            << q_in.rows() << " rows by " << q_in.columns() << "columns" << std::endl;
+  if (verbose)
+  {
+    std::cout << "\n\n> Starting JntToJac with "<< chains.size() << " chains and input joint array of size "
+              << q_in.rows() << " rows by " << q_in.columns() << " columns ------------------------ " << std::endl;
+  }
 
   // Reset target jacobian
-  SetToZero(jac);
+  SetToZero(jac); // ORIGINAL
 
-  std::cout << "Zero jacobian: " << std::endl;
-  jac.print();
+  //std::cout << "Zero jacobian: " << std::endl;
+  //jac.print();
 
   int joint_start_index = 0; // track which joint vector we are using
   int jac_output_row = 0; // track where to place the output jacobian
@@ -66,10 +70,13 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
 
   const Chain *this_chain;
 
-  std::cout << "We have " << chains.size() << " chains" << std::endl;
+  if (verbose)
+    std::cout << "\nWe have " << chains.size() << " chains" << std::endl;
+
   for (std::size_t chain_id = 0; chain_id < chains.size(); ++chain_id)
   {
-    std::cout << std::endl << "Processing chain " << chain_id << " ----------------------------" << std::endl;
+    if (verbose)
+      std::cout << std::endl << "Processing chain " << chain_id << " ----------------------------" << std::endl;
 
     // Get a pointer to the current chain
     this_chain = &chains[chain_id];
@@ -84,19 +91,23 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
     JntArray this_q_in(length_q);
 
     // Create q array ---------------
-    std::cout << OMPL_CONSOLE_COLOR_CYAN << "\nCreating jntArry of length " << length_q << 
-      " starting at index " << joint_start_index << std::endl;
+    if (verbose)
+      std::cout << OMPL_CONSOLE_COLOR_CYAN << "\nCreating jntArry of length " << length_q <<
+        " starting at index " << joint_start_index << std::endl;
 
     for (std::size_t j = joint_start_index; j < joint_start_index + length_q; ++j)
     {
-      std::cout << "   Value " << j << ": ";
+      if (verbose)
+        std::cout << "   Value " << j << ": ";
 
       // this_q_in starts from zero, while q_in starts from 'joint_start_index'
-      this_q_in(j - joint_start_index) = q_in(j); 
+      this_q_in(j - joint_start_index) = q_in(j);
 
-      std::cout << this_q_in(j) << std::endl;
+      if (verbose)
+        std::cout << this_q_in(j) << std::endl;
     }
-    std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
+    if (verbose)
+      std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
     // ------------------------------
 
     joint_start_index += length_q; // move forward
@@ -109,11 +120,16 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
     }
 
     // Debug
-    std::cout << "Sub jacobian id #" << chain_id << ":" << std::endl;
-    sub_jacobian.print();
-    std::cout << std::endl;
+    if (verbose || true)
+    {
+      std::cout << "Sub jacobian for chain #" << chain_id << ":" << std::endl;
+      sub_jacobian.print();
+      std::cout << std::endl;
+    }
 
-    std::cout << OMPL_CONSOLE_COLOR_GREEN << "*** Overlaying into main jacobian **** " << std::endl;
+    if (verbose)
+      std::cout << OMPL_CONSOLE_COLOR_GREEN << "*** Overlaying into main jacobian **** " << std::endl;
+
     // Overlay into main jacobian
     for (std::size_t i = 0; i < sub_jacobian.rows(); ++i)
     {
@@ -121,7 +137,7 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
       {
         // Copy single value at a time
         jac(jac_output_row + i, jac_output_col + j) = sub_jacobian(i,j);
-        //std::cout << "  Location " << jac_output_row + i << " x " << jac_output_col + j 
+        //std::cout << "  Location " << jac_output_row + i << " x " << jac_output_col + j
         //          << " equals " << jac(jac_output_row + i, jac_output_col + j) << std::endl;
       }
     }
@@ -130,18 +146,23 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
     jac_output_col += sub_jacobian.columns();
 
     // Show status
-    std::cout << "Modified Main jacobian: " << std::endl;
-    jac.print();
-    std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
-    //std::cout << "about to loop chain id: " << chain_id << " chain size: " << chains.size() << std::endl;
+    if (verbose)
+    {
+      std::cout << "Modified Main jacobian: " << std::endl;
+      jac.print();
+      std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
+      //std::cout << "about to loop chain id: " << chain_id << " chain size: " << chains.size() << std::endl;
+    }
   }
 
-  std::cout << "FINISHED CALCULTING JACOBIAN -------------------------- " << std::endl << std::endl;
+  if (verbose)
+    std::cout << "FINISHED CALCULTING JACOBIAN -------------------------- " << std::endl << std::endl;
 }
 
 int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const int seg_nr, const int chain_id)
 {
-  std::cout << "JntToJacSingle for chain # "  << chain_id << std::endl;
+  if (verbose)
+    std::cout << "JntToJacSingle for chain # "  << chain_id << std::endl;
 
   // Optionally do not proccess whole chain
   unsigned int segmentNr;
@@ -156,16 +177,19 @@ int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const 
   // Error check
   if (q_in.rows() != chains[chain_id].getNrOfJoints())
   {
-    std::cout << "Number of rows " << q_in.rows() << " does not equal number of joints in chain " 
+    std::cout << "Number of rows " << q_in.rows() << " does not equal number of joints in chain "
               << chains[chain_id].getNrOfJoints() << std::endl;
     return -1;
   }
+  /*
+    TODO address locked joints
   else if (nr_of_unlocked_joints_ != jac.columns())
   {
-    std::cout << "Number of unlocked joints " << nr_of_unlocked_joints_ << " does not equal number of columns " 
+    std::cout << "Number of unlocked joints " << nr_of_unlocked_joints_ << " does not equal number of columns "
               << jac.columns() << std::endl;
     return -1;
   }
+  */
   else if (segmentNr > chains[chain_id].getNrOfSegments())
   {
     std::cout << "Segment number is greater than the number of segments " << segmentNr << std::endl;
@@ -216,9 +240,6 @@ int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const 
 
     T_frame_tmp = total_frame;
   }
-
-  std::cout << "JntToJacSingle JACOBIAN for chain # "  << chain_id << std::endl;
-  jac.print();
 
   return 0;
 }

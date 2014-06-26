@@ -65,6 +65,9 @@
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
 
+// Helper for Rviz
+#include <moveit_visual_tools/visual_tools.h>
+
 namespace simple_kdl_kinematics_plugin
 {
 /**
@@ -310,8 +313,8 @@ private:
    * \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
    *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account.
    */
-  int cartesionToJoint(const KDL::JntArray& q_init, const KDL::Frame& p_in, KDL::JntArray& q_out,
-    KDL::ChainFkSolverPos& fksolver, KDL::IkSolverVel_pinv_nso& iksolver) const;
+  int cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out,
+    std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > &fk_solvers, KDL::IkSolverVel_pinv_nso& ik_solver) const;
 
   /** @brief Check whether the solution lies within the consistency limit of the seed state
    *  @param seed_state Seed state
@@ -362,6 +365,10 @@ private:
   int max_solver_iterations_;
   double epsilon_;
 
+  bool verbose_; // show debug info
+
+  // For visualizing things in rviz
+  moveit_visual_tools::VisualToolsPtr visual_tools_;
 };
 }
 

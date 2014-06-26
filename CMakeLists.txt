@@ -9,6 +9,7 @@ project(moveit_whole_body_ik)
 find_package(Boost REQUIRED system thread)
 
 find_package(catkin REQUIRED COMPONENTS
+  moveit_visual_tools
   moveit_core
   moveit_ros_planning
   cmake_modules
@@ -25,6 +26,7 @@ catkin_package(
   INCLUDE_DIRS
     simple_kdl_kinematics_plugin/include
   CATKIN_DEPENDS
+    moveit_visual_tools
     pluginlib
     moveit_core
     moveit_ros_planning

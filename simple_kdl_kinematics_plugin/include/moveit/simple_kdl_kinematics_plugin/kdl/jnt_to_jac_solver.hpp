@@ -48,7 +48,7 @@ namespace KDL
 class JntToJacSolver
 {
 public:
-  explicit JntToJacSolver(const std::vector<Chain>& chains, int num_joints);
+  explicit JntToJacSolver(const std::vector<Chain>& chains, int num_joints, bool verbose);
   virtual ~JntToJacSolver();
 
   /**
@@ -79,6 +79,7 @@ private:
 
   std::vector<bool> locked_joints_;
   unsigned int nr_of_unlocked_joints_;
+  bool verbose;
 };
 }
 #endif

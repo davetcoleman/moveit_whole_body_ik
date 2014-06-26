@@ -19,10 +19,12 @@
   <build_depend>moveit_ros_planning</build_depend>
   <build_depend>pluginlib</build_depend>
   <build_depend>cmake_modules</build_depend>
+  <build_depend>moveit_visual_tools</build_depend>
 
   <run_depend>moveit_core</run_depend>
   <run_depend>moveit_ros_planning</run_depend>
   <run_depend>pluginlib</run_depend>
+  <run_depend>moveit_visual_tools</run_depend>
 
   <export>
     <moveit_core plugin="${prefix}/simple_kdl_kinematics_plugin_description.xml"/>
