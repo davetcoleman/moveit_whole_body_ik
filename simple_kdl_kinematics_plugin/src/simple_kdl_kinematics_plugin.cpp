@@ -446,34 +446,48 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   q_out = q_init;
 
   KDL::JntArray delta_q(dimension_);
-  KDL::Frame f;
+  KDL::Frame p_current;
   KDL::Twist delta_twist;
 
   unsigned int i;
+  
+  // Iterate on approximate guess of joint values 'q_out'
   for ( i=0; i < max_solver_iterations_; i++ )
   {
-    fksolver.JntToCart(q_out,f);
-    delta_twist = diff(f,p_in);
+    // Forward kinematics from current guess to new frame
+    fksolver.JntToCart(q_out, p_current);
 
-    if (Equal(delta_twist,KDL::Twist::Zero(),epsilon_))
+    // Calculate the difference between our desired pose and current pose
+    delta_twist = diff(p_current, p_in);
+
+    // Check if the difference between our desired pose and current
+    // pose is within epsilon tolerance. if it is,  we are done
+    if (Equal(delta_twist, KDL::Twist::Zero(), epsilon_))
       break;
 
-    iksolver.CartToJnt(q_out,delta_twist,delta_q);
-    Add(q_out,delta_q,q_out);
+    // Run velocity solver - delta_q is returned as the joint velocities
+    // (change in joint value guess)
+    iksolver.CartToJnt(q_out, delta_twist, delta_q);
 
-    for (unsigned int j=0; j<joint_min_.rows(); j++)
+    // Add current guess 'q_out' with our new change in guess
+    Add(q_out, delta_q, q_out);
+
+    // Enforce low joint limits
+    for (unsigned int j = 0; j < joint_min_.rows(); j++)
     {
       if (q_out(j) < joint_min_(j))
         q_out(j) = joint_min_(j);
     }
 
-    for (unsigned int j=0; j<joint_max_.rows(); j++)
+    // Enforce high joint limits
+    for (unsigned int j = 0; j<joint_max_.rows(); j++)
     {
       if (q_out(j) > joint_max_(j))
         q_out(j) = joint_max_(j);
     }
   }
 
+  // Check if we succeeded in finding a close enough solution
   if (i != max_solver_iterations_)
     return 0;
   else
