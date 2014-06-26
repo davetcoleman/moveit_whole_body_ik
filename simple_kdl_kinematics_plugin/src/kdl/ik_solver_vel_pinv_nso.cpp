@@ -25,18 +25,18 @@
 namespace KDL
 {
 
-IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(const std::vector<Chain>& _chains, JntArray _opt_pos, JntArray _weights, 
+IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(const std::vector<Chain>& _chains, JntArray _opt_pos, JntArray _weights,
   double _eps, int _maxiter, double _alpha, int _num_tips):
   chains(_chains),
-  jnt2jac(chains, 2), // TODO change 2
+  jnt2jac(chains, 7),
   // Load the jacobian to have #joint ROWS x #tips COLS
   jacobian(_opt_pos.rows(), _num_tips*6),
   svd(jacobian),
-  U(6,JntArray(_opt_pos.rows())),
+  U(_num_tips*6,JntArray(_opt_pos.rows())),
   S(_opt_pos.rows()),
   V(_opt_pos.rows(), JntArray(_opt_pos.rows())),
   tmp(_opt_pos.rows()),
-  tmp2(_opt_pos.rows()-6),
+  tmp2(_opt_pos.rows()-6), // TODO remove this 6?
   eps(_eps),
   maxiter(_maxiter),
   alpha(_alpha),
@@ -44,21 +44,11 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(const std::vector<Chain>& _chains, Jn
   weights(_weights),
   opt_pos(_opt_pos)
 {
-}
+  std::cout << "CREATED JACOBIAN WITH " << opt_pos.rows() << " columns and " << _num_tips * 6<< " rows " << std::endl;
 
-void IkSolverVel_pinv_nso::printJacobian(const Jacobian &jacobian)
-{
-  std::cout << "--------------------------- " << std::endl;
-  for (std::size_t i = 0; i < jacobian.rows(); ++i)
-  {
-    for (std::size_t j = 0; j < jacobian.columns(); ++j)
-    {
-      std::cout << jacobian(i,j) << ", ";
-    }
-    std::cout << std::endl;
-  }
+  SetToZero(jacobian);
+  jacobian.print();
 }
-
 
 int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, JntArray& qdot_out)
 {
@@ -66,11 +56,13 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, Jnt
   //the current joint positions "q_in"
   jnt2jac.JntToJac(q_in,jacobian);
 
-  printJacobian(jacobian);
+  std::cout << "Resulting Combined Jacobian:" << std::endl;
+  jacobian.print();
 
   //Do a singular value decomposition of "jacobian" with maximum
   //iterations "maxiter", put the results in "U", "S" and "V"
   //jacobian = U*S*Vt
+  std::cout << "Singular value decomposition: " << std::endl;
   int ret = svd.calculate(jacobian,U,S,V,maxiter);
 
   double sum;
@@ -80,11 +72,19 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, Jnt
   // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
   // qdot_out = V*S_pinv*Ut*v_in
 
+  std::cout << "First we calculate Ut*v_in " << std::endl;
   //first we calculate Ut*v_in
-  for (i=0;i<jacobian.columns();i++) {
+  for (i=0;i<jacobian.columns();i++)
+  {
     sum = 0.0;
-    for (j=0;j<jacobian.rows();j++) {
-      sum+= U[j](i)*v_in(j);
+    for (j=0;j<jacobian.rows();j++)
+    {
+      std::cout << "debug " << std::endl;
+      std::cout << "U " <<  U[j](i) << std::endl;
+      std::cout << "j " << j << std::endl;
+      std::cout << "v_in " << v_in(j) << std::endl;
+      sum += U[j](i) * v_in(j);
+      std::cout << "sum " << sum << std::endl << std::endl;
     }
     //If the singular value is too small (<eps), don't invert it but
     //set the inverted singular value to zero (truncated svd)
@@ -92,9 +92,11 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, Jnt
   }
   //tmp is now: tmp=S_pinv*Ut*v_in, we still have to premultiply
   //it with V to get qdot_out
-  for (i=0;i<jacobian.columns();i++) {
+  for (i=0;i<jacobian.columns();i++)
+  {
     sum = 0.0;
-    for (j=0;j<jacobian.columns();j++) {
+    for (j=0;j<jacobian.columns();j++)
+    {
       sum+=V[i](j)*tmp(j);
     }
     //Put the result in qdot_out
@@ -107,16 +109,20 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const Twist& v_in, Jnt
     tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
 
   //Vtn*tmp
-  for (i=jacobian.rows()+1;i<jacobian.columns();i++) {
+  for (i=jacobian.rows()+1;i<jacobian.columns();i++)
+  {
     tmp2(i-(jacobian.rows()+1)) = 0.0;
-    for (j=0;j<jacobian.columns();j++) {
+    for (j=0;j<jacobian.columns();j++)
+    {
       tmp2(i-(jacobian.rows()+1)) +=V[j](i)*tmp(j);
     }
   }
 
-  for (i=0;i<jacobian.columns();i++) {
+  for (i=0;i<jacobian.columns();i++)
+  {
     sum = 0.0;
-    for (j=jacobian.rows()+1;j<jacobian.columns();j++) {
+    for (j=jacobian.rows()+1;j<jacobian.columns();j++)
+    {
       sum +=V[i](j)*tmp2(j);
     }
     qdot_out(i) += alpha*sum;

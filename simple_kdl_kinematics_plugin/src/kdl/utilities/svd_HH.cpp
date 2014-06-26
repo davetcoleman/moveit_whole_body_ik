@@ -22,7 +22,7 @@
 
 //Based on the svd of the KDL-0.2 library by Erwin Aertbelien
 
-#include "svd_HH.hpp"
+#include <moveit/simple_kdl_kinematics_plugin/kdl/utilities/svd_HH.hpp>
 
 namespace KDL
 {
@@ -48,7 +48,7 @@ namespace KDL
         return ((b) >= 0.0 ? fabs(a) : -fabs(a));
     }
 
-    SVD_HH::SVD_HH(const Jacobian& jac):
+    SVD_HH::SVD_HH(const Jacobian2d& jac):
         tmp(jac.columns())
     {
     }
@@ -57,21 +57,20 @@ namespace KDL
     {
     }
 
-    int SVD_HH::calculate(const Jacobian& jac,std::vector<JntArray>& U,JntArray& w,std::vector<JntArray>& v,int maxiter)
+    int SVD_HH::calculate(const Jacobian2d& jac, std::vector<JntArray>& U, JntArray& w, std::vector<JntArray>& v, int maxiter)
     {
-
         //get the rows/columns of the jacobian
         const int rows = jac.rows();
         const int cols = jac.columns();
 
-        int i(-1),its(-1),j(-1),jj(-1),k(-1),nm=0;
+        int i(-1), its(-1), j(-1), jj(-1), k(-1), nm=0;
         int ppi(0);
-        bool flag,maxarg1,maxarg2;
-        double anorm(0),c(0),f(0),h(0),s(0),scale(0),x(0),y(0),z(0),g(0);
+        bool flag, maxarg1, maxarg2;
+        double anorm(0), c(0), f(0), h(0), s(0), scale(0), x(0), y(0), z(0), g(0);
 
         for(i=0;i<rows;i++)
             for(j=0;j<cols;j++)
-                U[i](j)=jac(i,j);
+                U[i](j)=jac(i, j);
         if(rows>cols)
             for(i=rows;i<cols;i++)
                 for(j=0;j<cols;j++)
@@ -92,12 +91,12 @@ namespace KDL
                         s += U[k](i)*U[k](i);
                     }
                     f=U[i](i);  // f is the diag elem
-                    g = -SIGN(sqrt(s),f);
+                    g = -SIGN(sqrt(s), f);
                     h=f*g-s;
                     U[i](i)=f-g;
                     for (j=ppi;j<cols;j++) {
                         // dot product of columns i and j, starting from the i-th row
-                        for (s=0.0,k=i;k<rows;k++) s += U[k](i)*U[k](j);
+                        for (s=0.0, k=i;k<rows;k++) s += U[k](i)*U[k](j);
                         f=s/h;
                         // copy the scaled i-th column into the j-th column
                         for (k=i;k<rows;k++) U[k](j) += f*U[k](i);
@@ -109,7 +108,7 @@ namespace KDL
             w(i)=scale*g;
             g=s=scale=0.0;
             if ((i <rows) && (i+1 != cols)) {
-                // sum of row i, start from columns i+1
+                // sum of row i,  start from columns i+1
                 for (k=ppi;k<cols;k++) scale += fabs(U[i](k));
                 if (scale) {
                     for (k=ppi;k<cols;k++) {
@@ -117,12 +116,12 @@ namespace KDL
                         s += U[i](k)*U[i](k);
                     }
                     f=U[i](ppi);
-                    g = -SIGN(sqrt(s),f);
+                    g = -SIGN(sqrt(s), f);
                     h=f*g-s;
                     U[i](ppi)=f-g;
                     for (k=ppi;k<cols;k++) tmp(k)=U[i](k)/h;
                     for (j=ppi;j<rows;j++) {
-                        for (s=0.0,k=ppi;k<cols;k++) s += U[j](k)*U[i](k);
+                        for (s=0.0, k=ppi;k<cols;k++) s += U[j](k)*U[i](k);
                         for (k=ppi;k<cols;k++) U[j](k) += s*tmp(k);
                     }
                     for (k=ppi;k<cols;k++) U[i](k) *= scale;
@@ -138,7 +137,7 @@ namespace KDL
                 if (g) {
                     for (j=ppi;j<cols;j++) v[j](i)=(U[i](j)/U[i](ppi))/g;
                     for (j=ppi;j<cols;j++) {
-                        for (s=0.0,k=ppi;k<cols;k++) s += U[i](k)*v[k](j);
+                        for (s=0.0, k=ppi;k<cols;k++) s += U[i](k)*v[k](j);
                         for (k=ppi;k<cols;k++) v[k](j) += s*v[k](i);
                     }
                 }
@@ -156,7 +155,7 @@ namespace KDL
             if (g) {
                 g=1.0/g;
                 for (j=ppi;j<cols;j++) {
-                    for (s=0.0,k=ppi;k<rows;k++) s += U[k](i)*U[k](j);
+                    for (s=0.0, k=ppi;k<rows;k++) s += U[k](i)*U[k](j);
                     f=(s/U[i](i))*g;
                     for (k=i;k<rows;k++) U[k](j) += f*U[k](i);
                 }
@@ -187,7 +186,7 @@ namespace KDL
                         tmp(i)=c*tmp(i);
                         if ((fabs(f)+anorm) == anorm) break;
                         g=w(i);
-                        h=PYTHAG(f,g);
+                        h=PYTHAG(f, g);
                         w(i)=h;
                         h=1.0/h;
                         c=g*h;
@@ -216,8 +215,8 @@ namespace KDL
                 h=tmp(k);
                 f=((y-z)*(y+z)+(g-h)*(g+h))/(2.0*h*y);
 
-                g=PYTHAG(f,1.0);
-                f=((x-z)*(x+z)+h*((y/(f+SIGN(g,f)))-h))/x;
+                g=PYTHAG(f, 1.0);
+                f=((x-z)*(x+z)+h*((y/(f+SIGN(g, f)))-h))/x;
 
                 /* Next QR transformation: */
                 c=s=1.0;
@@ -227,7 +226,7 @@ namespace KDL
                     y=w(i);
                     h=s*g;
                     g=c*g;
-                    z=PYTHAG(f,h);
+                    z=PYTHAG(f, h);
                     tmp(j)=z;
                     c=f/z;
                     s=h/z;
@@ -241,7 +240,7 @@ namespace KDL
                         v[jj](j)=x*c+z*s;
                         v[jj](i)=z*c-x*s;
                     }
-                    z=PYTHAG(f,h);
+                    z=PYTHAG(f, h);
                     w(j)=z;
                     if (z) {
                         z=1.0/z;

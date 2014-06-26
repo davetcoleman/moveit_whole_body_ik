@@ -99,7 +99,7 @@ namespace KDL
         dest.data=src.data/factor;
     }
 
-    void MultiplyJacobian(const Jacobian& jac, const JntArray& src, Twist& dest)
+    void MultiplyJacobian(const Jacobian2d& jac, const JntArray& src, Twist& dest)
     {
         Eigen::Matrix<double,6,1> t=jac.data.lazyProduct(src.data);
         dest=Twist(Vector(t(0),t(1),t(2)),Vector(t(3),t(4),t(5)));

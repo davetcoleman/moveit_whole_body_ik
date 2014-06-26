@@ -9,6 +9,7 @@ add_library(${MOVEIT_LIB_NAME}
   src/kdl/jacobian.cpp
   src/kdl/jntarray.cpp
   src/kdl/jnt_to_jac_solver.cpp
+  src/kdl/utilities/svd_HH.cpp
 )
 
 target_link_libraries(${MOVEIT_LIB_NAME} ${catkin_LIBRARIES})

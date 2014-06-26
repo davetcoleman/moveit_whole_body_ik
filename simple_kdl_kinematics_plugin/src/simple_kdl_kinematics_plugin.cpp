@@ -38,7 +38,6 @@
 
 #include <moveit/simple_kdl_kinematics_plugin/simple_kdl_kinematics_plugin.h>
 #include <class_loader/class_loader.h>
-//#include <pluginlib/class_list_macros.h> // both?
 
 #include <tf_conversions/tf_kdl.h>
 #include <kdl_parser/kdl_parser.hpp>
@@ -51,7 +50,6 @@
 
 //register SimpleKDLKinematics as a KinematicsBase implementation
 CLASS_LOADER_REGISTER_CLASS(simple_kdl_kinematics_plugin::SimpleKDLKinematicsPlugin, kinematics::KinematicsBase)
-
 
 namespace simple_kdl_kinematics_plugin
 {
@@ -340,6 +338,8 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   int maxiter=150;
   // alpha the null-space velocity gain
   double alpha = 0.25;
+
+  ROS_INFO_STREAM_NAMED("temp","number of poses: " << ik_poses.size());
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   KDL::IkSolverVel_pinv_nso ik_solver_vel(kdl_chains_, opt_positions, weights, eps, maxiter, alpha, ik_poses.size());

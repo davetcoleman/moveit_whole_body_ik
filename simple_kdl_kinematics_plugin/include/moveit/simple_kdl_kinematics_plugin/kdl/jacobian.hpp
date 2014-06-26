@@ -19,8 +19,8 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-#ifndef KDL_JACOBIAN_HPP
-#define KDL_JACOBIAN_HPP
+#ifndef KDL_JACOBIAN2D_HPP
+#define KDL_JACOBIAN2D_HPP
 
 #include "frames.hpp"
 #include <Eigen/Core>
@@ -28,45 +28,45 @@
 namespace KDL
 {
 // Equal is friend function, but default arguments for friends are forbidden (§8.3.6.4)
-class Jacobian;
-bool Equal(const Jacobian& a,const Jacobian& b,double eps=epsilon);
+class Jacobian2d;
+bool Equal2d(const Jacobian2d& a,const Jacobian2d& b,double eps=epsilon);
 
 
-class Jacobian
+class Jacobian2d
 {
 public:
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic> data;
-  Jacobian();
+  Jacobian2d();
 
-  explicit Jacobian(unsigned int nr_of_columns, unsigned int nr_of_rows = 6);
-  Jacobian(const Jacobian& arg);
+  explicit Jacobian2d(unsigned int nr_of_columns, unsigned int nr_of_rows = 6);
+  Jacobian2d(const Jacobian2d& arg);
 
   ///Allocates memory for new size (can break realtime behavior)
   void resize(unsigned int newNrOfColumns, unsigned int newNrOfRows = 6);
 
   ///Allocates memory if size of this and argument is different
-  Jacobian& operator=(const Jacobian& arg);
+  Jacobian2d& operator=(const Jacobian2d& arg);
 
-  bool operator ==(const Jacobian& arg)const;
-  bool operator !=(const Jacobian& arg)const;
+  bool operator ==(const Jacobian2d& arg)const;
+  bool operator !=(const Jacobian2d& arg)const;
 
-  friend bool Equal(const Jacobian& a,const Jacobian& b,double eps);
+  friend bool Equal(const Jacobian2d& a,const Jacobian2d& b,double eps);
 
 
-  ~Jacobian();
+  ~Jacobian2d();
 
   double operator()(unsigned int i,unsigned int j)const;
   double& operator()(unsigned int i,unsigned int j);
   unsigned int rows()const;
   unsigned int columns()const;
 
-  friend void SetToZero(Jacobian& jac);
+  friend void SetToZero(Jacobian2d& jac);
 
-  friend bool changeRefPoint(const Jacobian& src1, const Vector& base_AB, Jacobian& dest);
-  friend bool changeBase(const Jacobian& src1, const Rotation& rot, Jacobian& dest);
-  friend bool changeRefFrame(const Jacobian& src1,const Frame& frame, Jacobian& dest);
+  friend bool changeRefPoint(const Jacobian2d& src1, const Vector& base_AB, Jacobian2d& dest);
+  friend bool changeBase(const Jacobian2d& src1, const Rotation& rot, Jacobian2d& dest);
+  friend bool changeRefFrame(const Jacobian2d& src1,const Frame& frame, Jacobian2d& dest);
 
   Twist getColumn(unsigned int i) const;
   void setColumn(unsigned int i,const Twist& t);
@@ -75,14 +75,13 @@ public:
   void changeBase(const Rotation& rot);
   void changeRefFrame(const Frame& frame);
 
+  void print() const;
+}; // end class
 
-};
+bool changeRefPoint2d(const Jacobian2d& src1, const Vector& base_AB, Jacobian2d& dest);
+bool changeBase2d(const Jacobian2d& src1, const Rotation& rot, Jacobian2d& dest);
+bool changeRefFrame2d(const Jacobian2d& src1,const Frame& frame, Jacobian2d& dest);
 
-bool changeRefPoint(const Jacobian& src1, const Vector& base_AB, Jacobian& dest);
-bool changeBase(const Jacobian& src1, const Rotation& rot, Jacobian& dest);
-bool changeRefFrame(const Jacobian& src1,const Frame& frame, Jacobian& dest);
-
-
-}
+} // end namespace
 
 #endif

@@ -66,11 +66,6 @@ public:
 
   ~IkSolverVel_pinv_nso() {};
 
-  /**
-   * \brief Debugging
-   */
-  void printJacobian(const Jacobian &jacobian);
-
   virtual int CartToJnt(const JntArray& q_in, const Twist& v_in, JntArray& qdot_out);
 
   /**
@@ -100,7 +95,7 @@ public:
 private:
   const std::vector<Chain> chains;
   JntToJacSolver jnt2jac;
-  Jacobian jacobian;
+  Jacobian2d jacobian;
   SVD_HH svd;
   std::vector<JntArray> U;
   JntArray S;

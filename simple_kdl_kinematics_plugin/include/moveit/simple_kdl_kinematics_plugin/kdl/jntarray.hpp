@@ -139,7 +139,7 @@ class MyTask : public RTT::TaskContext
         friend void Subtract(const JntArray& src1,const JntArray& src2,JntArray& dest);
         friend void Multiply(const JntArray& src,const double& factor,JntArray& dest);
         friend void Divide(const JntArray& src,const double& factor,JntArray& dest);
-        friend void MultiplyJacobian(const Jacobian& jac, const JntArray& src, Twist& dest);
+        friend void MultiplyJacobian(const Jacobian2d& jac, const JntArray& src, Twist& dest);
         friend void SetToZero(JntArray& array);
         friend bool Equal(const JntArray& src1,const JntArray& src2,double eps);
 
@@ -202,7 +202,7 @@ class MyTask : public RTT::TaskContext
      * @param dest t
      * @post dest==Twist::Zero() if 0==src.rows() (ie src is empty)
      */
-    void MultiplyJacobian(const Jacobian& jac, const JntArray& src, Twist& dest);
+    void MultiplyJacobian(const Jacobian2d& jac, const JntArray& src, Twist& dest);
     /**
      * Function to set all the values of the array to 0
      *

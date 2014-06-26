@@ -27,6 +27,14 @@
 #include "jntarray.hpp"
 #include "chain.hpp"
 
+// Change text color on console output
+#define OMPL_CONSOLE_COLOR_RESET "\033[0m"
+#define OMPL_CONSOLE_COLOR_GREEN "\033[92m"
+#define OMPL_CONSOLE_COLOR_BLUE "\033[94m"
+#define OMPL_CONSOLE_COLOR_CYAN "\033[96m"
+#define OMPL_CONSOLE_COLOR_BROWN "\033[93m"
+#define OMPL_CONSOLE_COLOR_RED "\033[91m"
+
 namespace KDL
 {
 /**
@@ -43,7 +51,6 @@ public:
   explicit JntToJacSolver(const std::vector<Chain>& chains, int num_joints);
   virtual ~JntToJacSolver();
 
-  void printJacobian(const Jacobian &jac);
   /**
    * Calculate the jacobian expressed in the base frame of the
    * chain, with reference point at the end effector of the
@@ -55,12 +62,12 @@ public:
    *
    * @return always returns 0
    */
-  virtual int JntToJac(const JntArray& q_in, Jacobian& jac, int segmentNR=-1);
+  virtual int JntToJac(const JntArray& q_in, Jacobian2d& jac, int segmentNR=-1);
 
   /**
    * \brief Find jacobian for single chain
    */
-  int JntToJacSingle(const JntArray& q_in, Jacobian& jac, int seg_nr, int chain_id);
+  int JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const int seg_nr, const int chain_id);
 
   int setLockedJoints(const std::vector<bool> locked_joints);
 private:
