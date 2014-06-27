@@ -20,6 +20,7 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include <moveit/simple_kdl_kinematics_plugin/kdl/jntarray.hpp>
+#include <iostream> // TODO remove
 
 namespace KDL
 {
@@ -77,6 +78,16 @@ namespace KDL
     unsigned int JntArray::columns()const
     {
         return data.cols();
+    }
+
+    void JntArray::print() const
+    {
+      std::cout << "========= " << data.rows() << "x Joint Array =======" << std::endl;
+      for (std::size_t i = 0; i < data.rows(); ++i)
+      {
+        std::cout << data(i) << std::endl;
+      }
+      std::cout << "======================= " << std::endl;
     }
 
     void Add(const JntArray& src1,const JntArray& src2,JntArray& dest)

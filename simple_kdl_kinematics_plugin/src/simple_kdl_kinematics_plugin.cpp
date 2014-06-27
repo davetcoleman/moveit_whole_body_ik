@@ -40,6 +40,7 @@
 #include <class_loader/class_loader.h>
 
 #include <tf_conversions/tf_kdl.h>
+#include <tf_conversions/tf_eigen.h>
 #include <kdl_parser/kdl_parser.hpp>
 
 // URDF, SRDF
@@ -160,8 +161,8 @@ bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
 
   static const std::string BASE_LINK  = "BODY";
   static const std::string CHEST_LINK  = "CHEST_LINK1";
-  static const std::string RIGHT_ARM_LINK = "RARM_LINK6";
   static const std::string LEFT_ARM_LINK = "LARM_LINK6";
+  static const std::string RIGHT_ARM_LINK = "RARM_LINK6";
 
   kdl_chains_.resize(2);
 
@@ -299,8 +300,6 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   const kinematics::KinematicsQueryOptions &options,
   const moveit::core::RobotState* context_state) const
 {
-  ROS_INFO_STREAM_NAMED("searchPositionIK","Called with timeout " << timeout);
-
   ros::WallTime n1 = ros::WallTime::now();
 
   // Check if seed state correct
@@ -352,82 +351,76 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // alpha the null-space velocity gain
   double alpha = 0.25;
 
-  ROS_INFO_STREAM_NAMED("temp","number of poses: " << ik_poses.size());
+  if (verbose_)
+    ROS_INFO_STREAM_NAMED("searchPositionIK","Number of poses: " << ik_poses.size());
+
+  // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
+  KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, opt_positions, weights, eps, maxiter, alpha, verbose_);
 
 
+  /*
   // Test Jnt2Jac Jacobian Generator
   KDL::JntArray q_in(dimension_);
+  KDL::JntArray delta_twists( ik_poses.size() * 6 ); // multiple twists from different end effectors, each of which have 6 dof
+  KDL::JntArray qdot(dimension_);
+  KDL::Jacobian2d jacobian(dimension_, ik_poses.size() * 6);
 
   // Copy the seed state
   for(unsigned int i=0; i < dimension_; i++)
   {
-    q_in(i) = ik_seed_state[i];
-    std::cout << "q_in " << q_in(i) << std::endl;
+  q_in(i) = 0.5; // ik_seed_state[i];
+  //std::cout << "q_in " << q_in(i) << std::endl;
   }
 
-  KDL::Jacobian2d jacobian(dimension_, ik_poses.size() * 6);
+  // Find pseudo inverse
+  for (std::size_t i = 0; i < delta_twists.rows(); ++i)
+  {
+  KDL::SetToZero(delta_twists);
+  delta_twists(i) = 1;
+  ik_solver_vel.CartToJnt(q_in, delta_twists, qdot);
+  //qdot.print();
+
+  for (std::size_t j = 0; j < qdot.rows(); ++j)
+  {
+  jacobian(i,j) = qdot(j);
+  }
+  }
+
+  // Combine to one jacobian
+  jacobian.print();
+
+  // Compare to regular jacobian
   //KDL::SetToZero(jacobian);
   KDL::JntToJacSolver jnt2jac(kdl_chains_, dimension_, verbose_);
+
   jnt2jac.JntToJac(q_in,jacobian);
-
-  //jacobian.print();
-
+  jacobian.print();
+  */
 
   // PSEUDO INVERSE ----------------
   // Using the svd decomposition (jac_pinv=V*S_pinv*Ut):
 
   /*
-  KDL::Jacobian2d jacobian_pinv(dimension_, ik_poses.size() * 6);
-  KDL::SVD_HH svd(jacobian);
-  int ret = svd.calculate(jacobian,U,S,V,maxiter); // Pseudo inverse
+    KDL::Jacobian2d jacobian_pinv(dimension_, ik_poses.size() * 6);
+    KDL::SVD_HH svd(jacobian);
+    int ret = svd.calculate(jacobian,U,S,V,maxiter); // Pseudo inverse
 
-  double sum;
-  unsigned int i,j;
-  for (i=0;i<jacobian.columns();i++)
-  {
+    double sum;
+    unsigned int i,j;
+    for (i=0;i<jacobian.columns();i++)
+    {
     sum = 0.0;
     for (j=0;j<jacobian.rows();j++)
     {
-      sum += U[j](i) * v_in(j);
+    sum += U[j](i) * v_in(j);
     }
     //If the singular value is too small (<eps), don't invert it but
     //set the inverted singular value to zero (truncated svd)
     tmp(i) = sum * ( fabs(S(i)) < eps ? 0.0 : 1.0/S(i) );
-  }
+    }
   */
 
-  exit(0);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
-  KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, opt_positions, weights, eps, maxiter, alpha, verbose_);
-
-  // Create fk solvers for each chain
-  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > fk_solvers;
-  for (std::size_t chain_id = 0; chain_id < kdl_chains_.size(); ++chain_id)
-  {
-    boost::shared_ptr<KDL::ChainFkSolverPos> temp (new KDL::ChainFkSolverPos_recursive(kdl_chains_[chain_id]));
-    fk_solvers.push_back(temp);
-  }
 
   // Setup solution struct
   solution.resize(dimension_);
@@ -437,7 +430,7 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   for (std::size_t i = 0; i < ik_poses.size(); ++i)
   {
     KDL::Frame temp;
-    tf::poseMsgToKDL(ik_poses[0], temp);
+    tf::poseMsgToKDL(ik_poses[i], temp);
     kdl_poses.push_back(temp);
   }
 
@@ -478,14 +471,16 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
         // Look for any random joint values
         getRandomConfiguration(jnt_pos_in);
       }
-      ROS_DEBUG_NAMED("kdl","New random configuration");
-      for(unsigned int j=0; j < dimension_; j++)
-        ROS_DEBUG_NAMED("kdl","%d %f", j, jnt_pos_in(j));
+      if (verbose_)
+      {
+        ROS_DEBUG_NAMED("kdl","New random configuration");
+        for(unsigned int j=0; j < dimension_; j++)
+          ROS_DEBUG_NAMED("kdl","%d %f", j, jnt_pos_in(j));
+      }
     }
 
     // Solve
-    //int ik_valid = ik_solver_pos.CartToJnt(jnt_pos_in, pose_desired, jnt_pos_out);
-    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out, fk_solvers, ik_solver_vel);
+    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out, ik_solver_vel);
     ROS_DEBUG_NAMED("kdl","IK valid: %d", ik_valid);
 
     // Check solution
@@ -506,12 +501,15 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       solution[j] = jnt_pos_out(j);
 
     // Optionally check again with custom callback
-    /*
-      if(!solution_callback.empty())
-      solution_callback(ik_poses,solution,error_code);
-      else
+    if(!solution_callback.empty())
+    {
+      //solution_callback(ik_poses,solution,error_code); // TODO
+      ROS_ERROR_STREAM_NAMED("temp","Implement callbacks");
+      exit(-1);
+    }
+    else
       error_code.val = error_code.SUCCESS;
-    */
+
     // Check if callback was sucessful
     if(error_code.val == error_code.SUCCESS)
     {
@@ -529,8 +527,24 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   throw; // just testing
 }
 
+// Convert Eigen::Affine3d to KDL::Frame
+void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k)
+{
+  // Set position
+  for (unsigned int i = 0; i < 3; ++i)
+    k.p[i] = e.matrix()(i,3);
+
+  // Set orientation
+  for (unsigned int i = 0; i < 9; ++i)
+    k.M.data[i] = e.matrix()(i/3,i%3);
+
+  //k.M.data[i] = t.getBasis()[i/3][i%3];
+}
+
+/* \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
+ *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account. */
 int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out,
-  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > &fk_solvers, KDL::IkSolverVel_pinv_nso& ik_solver) const
+  KDL::IkSolverVel_pinv_nso& ik_solver_vel) const
 {
   // First solution guess is the seed state
   q_out = q_init;
@@ -538,7 +552,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
   KDL::JntArray qdot(dimension_);
-  std::vector<KDL::Frame> current_poses( kdl_poses.size() ); // f_current
+  KDL::Frame current_pose;
   KDL::Twist delta_twist; // velocity and rotational velocity
   KDL::JntArray delta_twists( kdl_poses.size() * 6 ); // multiple twists from different end effectors, each of which have 6 dof
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
@@ -550,7 +564,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
     if (verbose_)
-      ROS_WARN_STREAM_NAMED("temp","Starting solver iteration " << solver_iteration << " of " << max_solver_iterations_ << " =====================");
+      ROS_WARN_STREAM_NAMED("cartesionToJoint","Starting solver iteration " << solver_iteration << " of " << max_solver_iterations_ << " =====================");
 
     if (!ros::ok())
     {
@@ -560,37 +574,43 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     all_poses_valid = true;
 
+    // Convert to vector of doubles  - TODO this is duplicated at the bottom and we could possibly only do this once
+    for (std::size_t i = 0; i < q_out.rows(); ++i)
+      current_joint_values[i] = q_out(i);
+
+    if (verbose_)
+    {
+      std::cout << "Input robot state joints: " << std::endl;
+      std::copy(current_joint_values.begin(), current_joint_values.end(), std::ostream_iterator<double>(std::cout, "\n"));
+    }
+    robot_state_->setJointGroupPositions(joint_model_group_, current_joint_values);
+
+    // Visualize progress
+    if (verbose_ && solver_iteration % 10 == 0)
+    {
+      // Publish
+      visual_tools_->publishRobotState(robot_state_);
+      ros::Duration(0.15).sleep();
+    }
+
     // For each end effector
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
     {
-      // Error check my hack
-      if (dimension_of_subgroup != kdl_chains_[pose_id].getNrOfJoints())
-      {
-        std::cout << "Hack is bad, chain size assumption does not hold " << std::endl;
-        exit(-1);
-      }
+      // Do forward kinematics to get new EE pose location
+      Eigen::Affine3d eef_pose;
+      if (pose_id == 0)
+        eef_pose = robot_state_->getGlobalLinkTransform("LARM_LINK6");
+      else
+        eef_pose = robot_state_->getGlobalLinkTransform("RARM_LINK6");
 
-      // Convert q_out to its subgroup
-      for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
-      {
-        q_out_subgroup(i) = q_out(i + pose_id * dimension_of_subgroup);
-        if (verbose_)
-          std::cout << "q_out_subgroup(" <<  i << ") = " << q_out(i + pose_id * dimension_of_subgroup) << std::endl;
-      }
+      // Bring the pose to the frame of the IK solver
+      robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
 
-      // Forward kinematics from current guess to new frame
-      fk_solvers[pose_id]->JntToCart(q_out_subgroup, current_poses[pose_id]); // todo
-
-      // Convert subgroup to q_out
-      for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
-      {
-        q_out(i + pose_id * dimension_of_subgroup) = q_out_subgroup(i);
-        if (verbose_)
-          std::cout << "q_out(" <<  (i + pose_id * dimension_of_subgroup) << ") = " << q_out_subgroup(i) << std::endl;
-      }
+      // Convert Eigen::Affine3d to KDL::Frame
+      poseEigenToKDL(eef_pose, current_pose);
 
       // Calculate the difference between our desired pose and current pose
-      delta_twist = diff(current_poses[pose_id], kdl_poses[pose_id]);
+      delta_twist = diff(current_pose, kdl_poses[pose_id]);   // v_in = actual - target
 
       // Check if the difference between our desired pose and current pose is within epsilon tolerance
       if (!Equal(delta_twist, KDL::Twist::Zero(), epsilon_))
@@ -604,30 +624,30 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       }
     }
 
-    // See improvements
-    if (false)
+    // See twist delta
+    if (verbose_)
     {
       for (std::size_t i = 0; i < delta_twists.rows(); ++i)
       {
-        std::cout << boost::format("%14.5f") % delta_twists(i);
+        std::cout << boost::format("%12.5f") % delta_twists(i);
       }
       std::cout << std::endl;
-    } 
+    }
 
     // Check if we are done
     if (all_poses_valid)
     {
-      std::cout << "All of our end effectors are withing epsilon tolerance of goal location" << std::endl;
+      ROS_DEBUG_STREAM_NAMED("cartesionToJoint","All of our end effectors are withing epsilon tolerance of goal location");
       break;
     }
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver.CartToJnt(q_out, delta_twists, qdot);
+    ik_solver_vel.CartToJnt(q_out, delta_twists, qdot);
 
 
     // See velocities
-    if (false)
+    if (verbose_)
     {
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
@@ -645,7 +665,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       if (q_out(j) < joint_min_(j))
       {
         if (verbose_)
-          ROS_ERROR_STREAM_NAMED("temp","Min joint limit hit for joint " << j);
+          ROS_ERROR_STREAM_NAMED("cartesionToJoint","Min joint limit hit for joint " << j);
         q_out(j) = joint_min_(j);
       }
     }
@@ -656,26 +676,9 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       if (q_out(j) > joint_max_(j))
       {
         if (verbose_)
-          ROS_ERROR_STREAM_NAMED("temp","Max joint limit hit for joint " << j);
+          ROS_ERROR_STREAM_NAMED("cartesionToJoint","Max joint limit hit for joint " << j);
         q_out(j) = joint_max_(j);
       }
-    }
-
-    // Visualize progress
-    if (true) //solver_iteration % 2 == 0)
-    {
-      // Convert to vector of doubles
-      for (std::size_t i = 0; i < q_out.rows(); ++i)
-      {
-        current_joint_values[i] = q_out(i);
-      }
-
-      // Convert joints to robot state
-      robot_state_->setJointGroupPositions(joint_model_group_, current_joint_values);
-
-      // Publish
-      visual_tools_->publishRobotState(robot_state_);
-      ros::Duration(0.25).sleep();
     }
   }
 
@@ -710,23 +713,6 @@ bool SimpleKDLKinematicsPlugin::getPositionFK(const std::vector<std::string> &li
     jnt_pos_in(i) = joint_angles[i];
     }
 
-    KDL::ChainFkSolverPos_recursive fk_solver(kdl_chains_);
-    p
-    bool valid = true;
-    for(unsigned int i=0; i < poses.size(); i++)
-    {
-    ROS_DEBUG_NAMED("kdl","End effector index: %d",getKDLSegmentIndex(link_names[i]));
-    if(fk_solver.JntToCart(jnt_pos_in,f_out,getKDLSegmentIndex(link_names[i])) >=0)
-    {
-    tf::poseKDLToMsg(f_out,poses[i]);
-    }
-    else
-    {
-    ROS_ERROR_NAMED("kdl","Could not compute FK for %s",link_names[i].c_str());
-    valid = false;
-    }
-    }
-    return valid;
   */
   ROS_ERROR_STREAM_NAMED("temp","Currently not implemented");
   return false;

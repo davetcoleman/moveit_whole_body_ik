@@ -54,7 +54,6 @@
 
 // KDL
 #include "kdl/jacobian.hpp" // load this here so that it overrides the version from kdl_urdf_parser
-#include "kdl/chainfksolverpos_recursive.hpp" // forward kinematics
 #include "kdl/ik_solver_vel_pinv_nso.hpp" // customized ik generalize pseudo inverse
 #include "kdl/chain.hpp"
 #include "kdl/frames.hpp"
@@ -314,7 +313,7 @@ private:
    *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account.
    */
   int cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out,
-    std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > &fk_solvers, KDL::IkSolverVel_pinv_nso& ik_solver) const;
+    KDL::IkSolverVel_pinv_nso& ik_solver_vel) const;
 
   /** @brief Check whether the solution lies within the consistency limit of the seed state
    *  @param seed_state Seed state

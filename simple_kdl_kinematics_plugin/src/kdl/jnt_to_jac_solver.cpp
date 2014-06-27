@@ -120,7 +120,7 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
     }
 
     // Debug
-    if (verbose || true)
+    if (verbose)
     {
       std::cout << "Sub jacobian for chain #" << chain_id << ":" << std::endl;
       sub_jacobian.print();

@@ -145,6 +145,11 @@ class MyTask : public RTT::TaskContext
 
         friend bool operator==(const JntArray& src1,const JntArray& src2);
         //friend bool operator!=(const JntArray& src1,const JntArray& src2);
+
+        /**
+         * \brief Debug output
+         */
+        void print() const;
         };
 
     bool operator==(const JntArray& src1,const JntArray& src2);

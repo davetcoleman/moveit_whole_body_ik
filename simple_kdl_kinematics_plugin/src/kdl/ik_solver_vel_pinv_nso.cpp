@@ -140,8 +140,8 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
     {
       sum += V[i](j)*tmp2(j);
     }
-    // TODO renable this- dtc
-    //qdot_out(i) += alpha*sum;
+    
+    qdot_out(i) += alpha*sum;
   }
 
   if (verbose)
