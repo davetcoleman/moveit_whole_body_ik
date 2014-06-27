@@ -221,6 +221,10 @@ bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
     std::cout << std::endl << "Tip Link Names: ------------------------------------------- " << std::endl;
     std::copy(tip_frames_.begin(), tip_frames_.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
     std::cout << std::endl;
+
+    std::cout << "Expect: ----------------" << std::endl;
+    std::cout << " - LARM_LINK6 " << std::endl;
+    std::cout << " - RARM_LINK6 " << std::endl;
   }
 
   // Make sure all the tip links are in the link_names vector
@@ -376,70 +380,6 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     fk_solvers.push_back(temp);
   }
 
-  /*
-  // Test Jnt2Jac Jacobian Generator
-  KDL::JntArray q_in(dimension_);
-  KDL::JntArray delta_twists( ik_poses.size() * 6 ); // multiple twists from different end effectors, each of which have 6 dof
-  KDL::JntArray qdot(dimension_);
-  KDL::Jacobian2d jacobian(dimension_, ik_poses.size() * 6);
-
-  // Copy the seed state
-  for(unsigned int i=0; i < dimension_; i++)
-  {
-  q_in(i) = 0.5; // ik_seed_state[i];
-  //std::cout << "q_in " << q_in(i) << std::endl;
-  }
-
-  // Find pseudo inverse
-  for (std::size_t i = 0; i < delta_twists.rows(); ++i)
-  {
-  KDL::SetToZero(delta_twists);
-  delta_twists(i) = 1;
-  ik_solver_vel.CartToJnt(q_in, delta_twists, qdot);
-  //qdot.print();
-
-  for (std::size_t j = 0; j < qdot.rows(); ++j)
-  {
-  jacobian(i,j) = qdot(j);
-  }
-  }
-
-  // Combine to one jacobian
-  jacobian.print();
-
-  // Compare to regular jacobian
-  //KDL::SetToZero(jacobian);
-  KDL::JntToJacSolver jnt2jac(kdl_chains_, dimension_, verbose_);
-
-  jnt2jac.JntToJac(q_in,jacobian);
-  jacobian.print();
-  */
-
-  // PSEUDO INVERSE ----------------
-  // Using the svd decomposition (jac_pinv=V*S_pinv*Ut):
-
-  /*
-    KDL::Jacobian2d jacobian_pinv(dimension_, ik_poses.size() * 6);
-    KDL::SVD_HH svd(jacobian);
-    int ret = svd.calculate(jacobian,U,S,V,maxiter); // Pseudo inverse
-
-    double sum;
-    unsigned int i,j;
-    for (i=0;i<jacobian.columns();i++)
-    {
-    sum = 0.0;
-    for (j=0;j<jacobian.rows();j++)
-    {
-    sum += U[j](i) * v_in(j);
-    }
-    //If the singular value is too small (<eps), don't invert it but
-    //set the inverted singular value to zero (truncated svd)
-    tmp(i) = sum * ( fabs(S(i)) < eps ? 0.0 : 1.0/S(i) );
-    }
-  */
-
-
-
   // Setup solution struct
   solution.resize(dimension_);
 
@@ -521,9 +461,8 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     // Optionally check again with custom callback
     if(!solution_callback.empty())
     {
-      //solution_callback(ik_poses,solution,error_code); // TODO
-      ROS_ERROR_STREAM_NAMED("temp","Implement callbacks");
-      exit(-1);
+      ROS_ERROR_STREAM_NAMED("temp","Not sure how to handle a multi-pose callback");
+      solution_callback(ik_poses[0], solution, error_code);
     }
     else
       error_code.val = error_code.SUCCESS;
@@ -687,7 +626,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     if (all_poses_valid)
     {
       ROS_DEBUG_STREAM_NAMED("cartesionToJoint","All of our end effectors are withing epsilon tolerance of goal location");
-      break;
+      return 0;
     }
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
@@ -696,20 +635,50 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
 
     // See velocities
-    if (verbose_)
+    if (verbose_ || true)
     {
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%12.5f") % q_out(i);
+        std::cout << boost::format("%10.5f") % qdot(i);
       }
       std::cout << std::endl;
     }
 
+    // Check for stagnation in qdot every 4 iterations
+    if (solver_iteration % 4 == 0)
+    {
+      bool has_change = false;
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        // Store in temp so we only have to do absolute value once
+        double temp = qdot(i);
+        if (qdot(i) == 0)
+          temp = fabs(qdot(i));
+
+        // Only check if we haven't already found a non
+        if (!has_change && temp != qdot_cache(i))
+          has_change = true;
+
+        qdot_cache(i) = temp;
+      }
+
+      if (!has_change)
+      {
+        if (verbose)
+        {
+          ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
+          ros::Duration(1).sleep();
+        }
+        break;
+      }
+    }
+
+
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
     Add(q_out, qdot, q_out); // q_out = q_out + q_delta
 
-    // Enforce low joint limits
-    for (unsigned int j = 0; j < joint_min_.rows(); j++)
+    // Enforce joint limits
+    for (unsigned int j = 0; j < q_out.rows(); j++)
     {
       if (q_out(j) < joint_min_(j))
       {
@@ -717,25 +686,20 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
           ROS_ERROR_STREAM_NAMED("cartesionToJoint","Min joint limit hit for joint " << j);
         q_out(j) = joint_min_(j);
       }
-    }
-
-    // Enforce high joint limits
-    for (unsigned int j = 0; j<joint_max_.rows(); j++)
-    {
-      if (q_out(j) > joint_max_(j))
+      else if (q_out(j) > joint_max_(j))
       {
         if (verbose_)
           ROS_ERROR_STREAM_NAMED("cartesionToJoint","Max joint limit hit for joint " << j);
         q_out(j) = joint_max_(j);
       }
     }
+
+    // Check if we are stuck in some singularity point
+
   }
 
-  // Check if we succeeded in finding a close enough solution
-  if (solver_iteration != max_solver_iterations_)
-    return 0;
-  else
-    return -3;
+  // We never found a close enough solution
+  return -3;
 }
 
 bool SimpleKDLKinematicsPlugin::getPositionFK(const std::vector<std::string> &link_names,

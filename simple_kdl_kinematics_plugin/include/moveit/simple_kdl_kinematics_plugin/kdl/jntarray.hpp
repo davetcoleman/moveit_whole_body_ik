@@ -24,7 +24,7 @@
 
 #include "frames.hpp"
 #include "jacobian.hpp"
-
+#include <boost/shared_ptr.hpp>
 #include <Eigen/Core>
 
 namespace KDL
@@ -226,6 +226,7 @@ class MyTask : public RTT::TaskContext
      */
     bool Equal(const JntArray& src1,const JntArray& src2,double eps=epsilon);
 
+typedef boost::shared_ptr<JntArray> JntArrayPtr;
 }
 
 #endif

@@ -24,6 +24,7 @@
 
 #include "frames.hpp"
 #include <Eigen/Core>
+#include <boost/shared_ptr.hpp>
 
 namespace KDL
 {
@@ -81,6 +82,10 @@ public:
 bool changeRefPoint2d(const Jacobian2d& src1, const Vector& base_AB, Jacobian2d& dest);
 bool changeBase2d(const Jacobian2d& src1, const Rotation& rot, Jacobian2d& dest);
 bool changeRefFrame2d(const Jacobian2d& src1,const Frame& frame, Jacobian2d& dest);
+
+
+typedef boost::shared_ptr<Jacobian2d> Jacobian2dPtr;
+
 
 } // end namespace
 

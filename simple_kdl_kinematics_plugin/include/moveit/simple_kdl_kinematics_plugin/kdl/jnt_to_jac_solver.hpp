@@ -26,6 +26,7 @@
 #include "jacobian.hpp"
 #include "jntarray.hpp"
 #include "chain.hpp"
+#include <boost/shared_ptr.hpp>
 
 // Change text color on console output
 #define OMPL_CONSOLE_COLOR_RESET "\033[0m"
@@ -37,6 +38,7 @@
 
 namespace KDL
 {
+
 /**
  * @brief  Class to calculate the jacobian of a general
  * KDL::Chain, it is used by other solvers. It should not be used
@@ -71,7 +73,6 @@ public:
 
   int setLockedJoints(const std::vector<bool> locked_joints);
 private:
-  const std::vector<Chain> chains;
 
   Twist t_twist_tmp; // base of new segment's twist
   Frame T_frame_tmp;
@@ -80,7 +81,24 @@ private:
   std::vector<bool> locked_joints_;
   unsigned int nr_of_unlocked_joints_;
   bool verbose;
+
+  // All the chains that are combined to make a jacobian
+  const std::vector<Chain> chains;
+
+  // Store allocated memory for every chain
+  std::vector<Jacobian2dPtr> sub_jacobians;
+
+  // Sub joint index for every chain
+  std::vector<JntArrayPtr> sub_q_ins;
+
+  // Used in JntToJacSingle
+  unsigned int segmentNr;
+
+
 };
+
+
+
 }
 #endif
 
