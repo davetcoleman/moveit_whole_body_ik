@@ -353,7 +353,7 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
   KDL::JntArray weights(dimension_);
   for(unsigned int i=0; i < dimension_; i++)
-    weights(i) = 0.1;
+    weights(i) = 0.5;
 
   // if a singular value is below this value, its inverse is set to zero, default: 0.00001
   double eps=0.00001;
@@ -572,7 +572,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   std::size_t solver_iteration;
   std::vector<double> current_joint_values(dimension_); // for visualizing
 
-  bool use_robot_state = true;
+  bool use_robot_state = false;
 
 
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
