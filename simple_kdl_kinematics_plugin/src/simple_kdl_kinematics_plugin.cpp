@@ -333,10 +333,21 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   KDL::JntArray jnt_pos_out(dimension_);
 
   // Setup Inv Kin Solver -------------------------------------
-  // the desired positions of the chain used by to resolve the redundancy
+  // the desired positions of the chain used to resolve the redundancy
   KDL::JntArray opt_positions(dimension_);
-  for(unsigned int i=0; i < dimension_; i++)
-    opt_positions(i) = ik_seed_state[i]; // This could also be half of joint range value, or minimum torque value
+  //for(unsigned int i=0; i < dimension_; i++)
+  //  opt_positions(i) = ik_seed_state[i]; // This could also be half of joint range value, or minimum torque value
+
+  // Set to midpoint of each joint
+  //std::cout << "Setting desired positions: " << std::endl;
+  for (std::size_t i = 0; i < joint_model_group_->getActiveJointModels().size(); ++i)
+  {
+    moveit::core::VariableBounds bounds = joint_model_group_->getActiveJointModels()[i]->getVariableBounds()[0];
+    opt_positions(i) = (bounds.min_position_ + bounds.max_position_) / 2.0;
+    //std::cout << "pos " << i << ": " << opt_positions(i) << std::endl;
+  }
+
+
 
   // the weights applied in the joint space
   // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
@@ -357,6 +368,13 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, opt_positions, weights, eps, maxiter, alpha, verbose_);
 
+  // Create fk solvers for each chain
+  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > fk_solvers;
+  for (std::size_t chain_id = 0; chain_id < kdl_chains_.size(); ++chain_id)
+  {
+    boost::shared_ptr<KDL::ChainFkSolverPos> temp (new KDL::ChainFkSolverPos_recursive(kdl_chains_[chain_id]));
+    fk_solvers.push_back(temp);
+  }
 
   /*
   // Test Jnt2Jac Jacobian Generator
@@ -480,7 +498,7 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     }
 
     // Solve
-    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out, ik_solver_vel);
+    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out, fk_solvers, ik_solver_vel);
     ROS_DEBUG_NAMED("kdl","IK valid: %d", ik_valid);
 
     // Check solution
@@ -517,14 +535,7 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       return true;
     }
   }
-
-  // Should actually never get here
-  /*
-    ROS_DEBUG_NAMED("kdl","An IK that satisifes the constraints and is collision free could not be found");
-    error_code.val = error_code.NO_IK_SOLUTION;
-    return false;
-  */
-  throw; // just testing
+  // should never get here
 }
 
 // Convert Eigen::Affine3d to KDL::Frame
@@ -544,7 +555,7 @@ void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k)
 /* \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
  *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account. */
 int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out,
-  KDL::IkSolverVel_pinv_nso& ik_solver_vel) const
+  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > &fk_solvers, KDL::IkSolverVel_pinv_nso& ik_solver_vel) const
 {
   // First solution guess is the seed state
   q_out = q_init;
@@ -561,6 +572,9 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   std::size_t solver_iteration;
   std::vector<double> current_joint_values(dimension_); // for visualizing
 
+  bool use_robot_state = true;
+
+
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
     if (verbose_)
@@ -574,40 +588,75 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     all_poses_valid = true;
 
-    // Convert to vector of doubles  - TODO this is duplicated at the bottom and we could possibly only do this once
-    for (std::size_t i = 0; i < q_out.rows(); ++i)
-      current_joint_values[i] = q_out(i);
-
-    if (verbose_)
+    if (use_robot_state)
     {
-      std::cout << "Input robot state joints: " << std::endl;
-      std::copy(current_joint_values.begin(), current_joint_values.end(), std::ostream_iterator<double>(std::cout, "\n"));
-    }
-    robot_state_->setJointGroupPositions(joint_model_group_, current_joint_values);
+      // Convert to vector of doubles
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+        current_joint_values[i] = q_out(i);
 
-    // Visualize progress
-    if (verbose_ && solver_iteration % 10 == 0)
-    {
-      // Publish
-      visual_tools_->publishRobotState(robot_state_);
-      ros::Duration(0.15).sleep();
+      if (verbose_)
+      {
+        std::cout << "Input robot state joints: " << std::endl;
+        std::copy(current_joint_values.begin(), current_joint_values.end(), std::ostream_iterator<double>(std::cout, "\n"));
+      }
+      robot_state_->setJointGroupPositions(joint_model_group_, current_joint_values);
+
+      // Visualize progress
+      if (verbose_ && solver_iteration % 10 == 0)
+      {
+        // Publish
+        visual_tools_->publishRobotState(robot_state_);
+        ros::Duration(0.15).sleep();
+      }
     }
 
     // For each end effector
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
     {
-      // Do forward kinematics to get new EE pose location
-      Eigen::Affine3d eef_pose;
-      if (pose_id == 0)
-        eef_pose = robot_state_->getGlobalLinkTransform("LARM_LINK6");
+      if (!use_robot_state)
+      {
+        /*/ Error check my hack
+          if (dimension_of_subgroup != kdl_chains_[pose_id].getNrOfJoints())
+          {
+          std::cout << "Hack is bad, chain size assumption does not hold " << std::endl;
+          exit(-1);
+          }*/
+
+        // Convert q_out to its subgroup
+        for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
+        {
+          q_out_subgroup(i) = q_out(i + pose_id * dimension_of_subgroup);
+          if (verbose_)
+            std::cout << "q_out_subgroup(" <<  i << ") = " << q_out(i + pose_id * dimension_of_subgroup) << std::endl;
+        }
+
+        // Forward kinematics from current guess to new frame
+        fk_solvers[pose_id]->JntToCart(q_out_subgroup, current_pose);
+
+        // Convert subgroup to q_out
+        for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
+        {
+          q_out(i + pose_id * dimension_of_subgroup) = q_out_subgroup(i);
+          if (verbose_)
+            std::cout << "q_out(" <<  (i + pose_id * dimension_of_subgroup) << ") = " << q_out_subgroup(i) << std::endl;
+        }
+      }
       else
-        eef_pose = robot_state_->getGlobalLinkTransform("RARM_LINK6");
+      {
 
-      // Bring the pose to the frame of the IK solver
-      robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
+        // Do forward kinematics to get new EE pose location
+        Eigen::Affine3d eef_pose;
+        if (pose_id == 0)
+          eef_pose = robot_state_->getGlobalLinkTransform("LARM_LINK6");
+        else
+          eef_pose = robot_state_->getGlobalLinkTransform("RARM_LINK6");
 
-      // Convert Eigen::Affine3d to KDL::Frame
-      poseEigenToKDL(eef_pose, current_pose);
+        // Bring the pose to the frame of the IK solver
+        robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
+
+        // Convert Eigen::Affine3d to KDL::Frame
+        poseEigenToKDL(eef_pose, current_pose);
+      }
 
       // Calculate the difference between our desired pose and current pose
       delta_twist = diff(current_pose, kdl_poses[pose_id]);   // v_in = actual - target
