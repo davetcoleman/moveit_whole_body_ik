@@ -346,6 +346,7 @@ private:
     KDL::JntArray &jnt_array) const;
 
 
+  static const int TWIST_SIZE = 6;
 
   moveit_msgs::KinematicSolverInfo ik_group_info_; /** Stores information for the inverse kinematics solver */
 
@@ -369,6 +370,27 @@ private:
 
   // For visualizing things in rviz
   moveit_visual_tools::VisualToolsPtr visual_tools_;
+
+  // Variables for use in cartesionToJoint() ------------------------
+  struct CartesionToJointData
+  {
+    CartesionToJointData(int dimension, int num_poses) 
+      : qdot_(dimension),
+        qdot_cache_(dimension),
+        delta_twists_( num_poses * 6 ),
+        current_joint_values_(dimension)
+    {}
+    KDL::Twist delta_twist_; // velocity and rotational velocity
+    KDL::JntArray delta_twists_; // multiple twists from different end effectors, each of which have 6 dof
+    KDL::JntArray qdot_;
+    KDL::JntArray qdot_cache_;
+    KDL::Frame current_pose_;
+    std::vector<double> current_joint_values_; // for visualizing. perhaps remove?
+  };
+  typedef boost::shared_ptr<CartesionToJointData> CartesionToJointDataPtr;
+
+  CartesionToJointDataPtr ctj_data_;
+  // ----------------------------------------------------------------
 };
 }
 

@@ -262,6 +262,10 @@ bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
   visual_tools_.reset(new moveit_visual_tools::VisualTools("/odom","/hrp2_visual_markers", robot_model_));
   visual_tools_->loadRobotStatePub("/moveit_whole_body_ik");
 
+  // Load the datastructures into memory needed for solving
+  ctj_data_.reset(new CartesionToJointData(dimension_, tip_frames.size()));
+
+
   ROS_DEBUG_NAMED("kdl","KDL solver initialized");
   return true;
 }
@@ -499,21 +503,14 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   // First solution guess is the seed state
   q_out = q_init;
 
+  // TEMP:
   int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
-  KDL::JntArray qdot(dimension_);
-  KDL::Frame current_pose;
-  KDL::Twist delta_twist; // velocity and rotational velocity
-  KDL::JntArray delta_twists( kdl_poses.size() * 6 ); // multiple twists from different end effectors, each of which have 6 dof
-  bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
-  static const int TWIST_SIZE = 6;
-  // Iterate on approximate guess of joint values 'q_out'
-  std::size_t solver_iteration;
-  std::vector<double> current_joint_values(dimension_); // for visualizing
 
   bool use_robot_state = false;
+  bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
 
-
+  std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
     if (verbose_)
@@ -531,14 +528,14 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     {
       // Convert to vector of doubles
       for (std::size_t i = 0; i < q_out.rows(); ++i)
-        current_joint_values[i] = q_out(i);
+        ctj_data_->current_joint_values_[i] = q_out(i);
 
       if (verbose_)
       {
         std::cout << "Input robot state joints: " << std::endl;
-        std::copy(current_joint_values.begin(), current_joint_values.end(), std::ostream_iterator<double>(std::cout, "\n"));
+        std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, "\n"));
       }
-      robot_state_->setJointGroupPositions(joint_model_group_, current_joint_values);
+      robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
       if (verbose_ && solver_iteration % 10 == 0)
@@ -570,7 +567,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         }
 
         // Forward kinematics from current guess to new frame
-        fk_solvers[pose_id]->JntToCart(q_out_subgroup, current_pose);
+        fk_solvers[pose_id]->JntToCart(q_out_subgroup, ctj_data_->current_pose_);
 
         // Convert subgroup to q_out
         for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
@@ -594,30 +591,30 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
 
         // Convert Eigen::Affine3d to KDL::Frame
-        poseEigenToKDL(eef_pose, current_pose);
+        poseEigenToKDL(eef_pose, ctj_data_->current_pose_);
       }
 
       // Calculate the difference between our desired pose and current pose
-      delta_twist = diff(current_pose, kdl_poses[pose_id]);   // v_in = actual - target
+      ctj_data_->delta_twist_ = diff(ctj_data_->current_pose_, kdl_poses[pose_id]);   // v_in = actual - target
 
       // Check if the difference between our desired pose and current pose is within epsilon tolerance
-      if (!Equal(delta_twist, KDL::Twist::Zero(), epsilon_))
+      if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), epsilon_))
         all_poses_valid = false;
 
       // Add this twist to our large twist vector from multiple end effectors
       for (std::size_t twist_index = 0; twist_index < TWIST_SIZE; ++twist_index)
       {
-        //std::cout << " >>> Twist value is: " << delta_twist( twist_index ) << " being placed in index " << TWIST_SIZE * pose_id + twist_index << std::endl;
-        delta_twists( TWIST_SIZE * pose_id + twist_index ) = delta_twist( twist_index );
+        //std::cout << " >>> Twist value is: " << ctj_data_->delta_twist_( twist_index ) << " being placed in index " << TWIST_SIZE * pose_id + twist_index << std::endl;
+        ctj_data_->delta_twists_( TWIST_SIZE * pose_id + twist_index ) = ctj_data_->delta_twist_( twist_index );
       }
     }
 
     // See twist delta
     if (verbose_)
     {
-      for (std::size_t i = 0; i < delta_twists.rows(); ++i)
+      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
       {
-        std::cout << boost::format("%12.5f") % delta_twists(i);
+        std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(i);
       }
       std::cout << std::endl;
     }
@@ -631,15 +628,15 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel.CartToJnt(q_out, delta_twists, qdot);
+    ik_solver_vel.CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->qdot_);
 
 
     // See velocities
-    if (verbose_ || true)
+    if (verbose_)
     {
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.5f") % qdot(i);
+        std::cout << boost::format("%10.5f") % ctj_data_->qdot_(i);
       }
       std::cout << std::endl;
     }
@@ -651,20 +648,20 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         // Store in temp so we only have to do absolute value once
-        double temp = qdot(i);
-        if (qdot(i) == 0)
-          temp = fabs(qdot(i));
+        double temp = ctj_data_->qdot_(i);
+        if (ctj_data_->qdot_(i) == 0)
+          temp = fabs(ctj_data_->qdot_(i));
 
         // Only check if we haven't already found a non
-        if (!has_change && temp != qdot_cache(i))
+        if (!has_change && temp != ctj_data_->qdot_cache_(i))
           has_change = true;
 
-        qdot_cache(i) = temp;
+        ctj_data_->qdot_cache_(i) = temp;
       }
 
       if (!has_change)
       {
-        if (verbose)
+        if (verbose_)
         {
           ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
           ros::Duration(1).sleep();
@@ -675,7 +672,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
 
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
-    Add(q_out, qdot, q_out); // q_out = q_out + q_delta
+    Add(q_out, ctj_data_->qdot_, q_out); // q_out = q_out + q_delta
 
     // Enforce joint limits
     for (unsigned int j = 0; j < q_out.rows(); j++)

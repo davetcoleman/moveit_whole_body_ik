@@ -119,7 +119,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
   }
 
   //Now onto NULL space
-
+  /*
   for(i = 0; i < jacobian.columns(); i++)
     tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
 
@@ -141,8 +141,9 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
       sum += V[i](j)*tmp2(j);
     }
     
-    //   qdot_out(i) += alpha*sum;
+   qdot_out(i) += alpha*sum;
   }
+  */
 
   if (verbose)
   {
