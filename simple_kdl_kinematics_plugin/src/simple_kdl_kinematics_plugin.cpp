@@ -358,16 +358,14 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   {
     moveit::core::VariableBounds bounds = joint_model_group_->getActiveJointModels()[i]->getVariableBounds()[0];
     opt_positions(i) = (bounds.min_position_ + bounds.max_position_) / 2.0;
-    //std::cout << "pos " << i << ": " << opt_positions(i) << std::endl;
+    std::cout << "pos " << i << ": " << opt_positions(i) << std::endl;
   }
-
-
 
   // the weights applied in the joint space
   // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
   KDL::JntArray weights(dimension_);
   for(unsigned int i=0; i < dimension_; i++)
-    weights(i) = 0.5;
+    weights(i) = 0.5; //0.5;
 
   // if a singular value is below this value, its inverse is set to zero, default: 0.00001
   double eps=0.00001;
@@ -375,9 +373,6 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   int maxiter=150;
   // alpha the null-space velocity gain
   double alpha = 0.25;
-
-  if (verbose_)
-    ROS_INFO_STREAM_NAMED("searchPositionIK","Number of poses: " << ik_poses.size());
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, opt_positions, weights, eps, maxiter, alpha, verbose_);
@@ -515,7 +510,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
 
-  bool use_robot_state = false;
+  bool use_robot_state = true;
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
   bool debug_would_have_stopped = false;
 
@@ -548,7 +543,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
-      if (false) //verbose_ && solver_iteration % 10 == 0)
+      if (true) //verbose_ && solver_iteration % 10 == 0)
       {
         // Publish
         visual_tools_->publishRobotState(robot_state_);
@@ -647,12 +642,12 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
 
     // See velocities
-    if (verbose_)
+    if (verbose_ || true)
     {
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        //std::cout << boost::format("%10.5f") % ctj_data_->qdot_(i);
-        std::cout << boost::format("%20.15f") % ctj_data_->qdot_(i);
+        std::cout << boost::format("%11.7f") % ctj_data_->qdot_(i);
+        //std::cout << boost::format("%20.15f") % ctj_data_->qdot_(i);
       }
       std::cout << std::endl;
     }
@@ -680,7 +675,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
       if (!has_change)
       {
-        if (verbose_)
+        if (verbose_ || true)
         {
           ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
           //ros::Duration(1).sleep();

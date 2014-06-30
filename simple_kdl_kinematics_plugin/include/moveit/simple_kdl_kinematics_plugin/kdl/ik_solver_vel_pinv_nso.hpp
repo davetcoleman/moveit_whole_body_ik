@@ -66,7 +66,7 @@ public:
 
   ~IkSolverVel_pinv_nso() {};
 
-  virtual int CartToJnt(const JntArray& q_in, const JntArray& v_in, JntArray& qdot_out);
+  virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, JntArray& qdot_out);
   /**
    *Set joint weights for optimization criterion
    *

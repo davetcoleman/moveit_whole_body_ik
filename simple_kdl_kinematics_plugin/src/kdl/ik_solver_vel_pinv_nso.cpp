@@ -52,10 +52,10 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const
 
 /**
  * \param q_in - current joint location, (?? = this allows us to linearize the jacobian around its current state)
- * \param v_in - the difference between desired pose and current pose
+ * \param xdot_in - the difference between desired pose and current pose
  * \param qdot_out - velocity (delta q) - change in joint values
  */
-int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, JntArray& qdot_out)
+int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, JntArray& qdot_out)
 {
   //Let the ChainJntToJacSolver calculate the jacobian "jac" for
   //the current joint positions "q_in"
@@ -78,20 +78,20 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
   double sum;
   unsigned int i,j;
 
-  // We have to calculate qdot_out = jac_pinv*v_in
+  // We have to calculate qdot_out = jac_pinv*xdot_in
   // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
-  // qdot_out = V*S_pinv*Ut*v_in
+  // qdot_out = V*S_pinv*Ut*xdot_in
 
   if (verbose)
-    std::cout << "First we calculate Ut*v_in " << std::endl;
+    std::cout << "First we calculate Ut*xdot_in " << std::endl;
 
-  //first we calculate S_pinv*Ut*v_in
+  //first we calculate S_pinv*Ut*xdot_in
   for (i=0;i<jacobian.columns();i++)
   {
     sum = 0.0;
     for (j=0;j<jacobian.rows();j++)
     {
-      sum += U[j](i) * v_in(j);
+      sum += U[j](i) * xdot_in(j);
     }
     //If the singular value is too small (<eps), don't invert it but
     //set the inverted singular value to zero (truncated svd)
@@ -105,7 +105,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
     }
   }
 
-  //tmp is now: tmp=S_pinv*Ut*v_in, we still have to premultiply
+  //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
   //it with V to get qdot_out
   for (i=0;i<jacobian.columns();i++)
   {
@@ -118,12 +118,20 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
     qdot_out(i)=sum;
   }
 
-  //Now onto NULL space
-  /*
+  // Now onto NULL space ==========================================================
+
+  // Create weighted position error vector
   for(i = 0; i < jacobian.columns(); i++)
+  {
+    // Original:
     tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
 
+    //tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
+  }
+
   //Vtn*tmp
+  // temp2 is a vector the length of our redudant dofs (joints n - 6)
+  // temp2 = V * tmp
   for (i = jacobian.rows()+1;i<jacobian.columns();i++)
   {
     tmp2(i-(jacobian.rows()+1)) = 0.0;
@@ -133,6 +141,8 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
     }
   }
 
+  // Add the velocity of the null space redudancy to our qdot_out
+  // qdot_out = qdot_out + alpha*temp2
   for (i = 0;i<jacobian.columns();i++)
   {
     sum = 0.0;
@@ -143,8 +153,8 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& v_in, 
     
    qdot_out(i) += alpha*sum;
   }
-  */
 
+  // Debug
   if (verbose)
   {
     std::cout << "Final Solution: " << std::endl;
