@@ -310,6 +310,12 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
 {
   ros::WallTime n1 = ros::WallTime::now();
 
+  if (!ros::ok())
+  {
+    ROS_ERROR_STREAM_NAMED("cartesianToJoint","ROS requested shutdown");
+    return -1;
+  }
+
   // Check if seed state correct
   if(ik_seed_state.size() != dimension_)
   {
@@ -400,6 +406,7 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   for(unsigned int i=0; i < dimension_; i++)
   {
     jnt_seed_state(i) = ik_seed_state[i];
+
     if (verbose_)
       std::cout << "Seed state " << i << ": " << ik_seed_state[i] << std::endl;
   }
@@ -443,18 +450,19 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
 
     // Solve
     int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out, fk_solvers, ik_solver_vel);
-    ROS_DEBUG_NAMED("kdl","IK valid: %d", ik_valid);
 
     // Check solution
     if( !consistency_limits.empty() &&
       ( (ik_valid < 0 && !options.return_approximate_solution) || !checkConsistency(jnt_seed_state, consistency_limits, jnt_pos_out)) )
     {
-      ROS_DEBUG_NAMED("kdl","Could not find IK solution: does not match consistency limits");
+      if (verbose_)
+        ROS_DEBUG_NAMED("kdl","Could not find IK solution: does not match consistency limits");
       continue;
     }
     else if(ik_valid < 0 && !options.return_approximate_solution)
     {
-      ROS_DEBUG_NAMED("kdl","Could not find IK solution");
+      if (verbose_)
+        ROS_DEBUG_NAMED("kdl","Could not find IK solution");
       continue;
     }
 
@@ -509,10 +517,12 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
   bool use_robot_state = false;
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
+  bool debug_would_have_stopped = false;
 
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
+
     if (verbose_)
       ROS_WARN_STREAM_NAMED("cartesionToJoint","Starting solver iteration " << solver_iteration << " of " << max_solver_iterations_ << " =====================");
 
@@ -538,7 +548,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
-      if (verbose_ && solver_iteration % 10 == 0)
+      if (false) //verbose_ && solver_iteration % 10 == 0)
       {
         // Publish
         visual_tools_->publishRobotState(robot_state_);
@@ -623,6 +633,11 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     if (all_poses_valid)
     {
       ROS_DEBUG_STREAM_NAMED("cartesionToJoint","All of our end effectors are withing epsilon tolerance of goal location");
+      if (debug_would_have_stopped)
+      {
+        ROS_ERROR_STREAM_NAMED("temp","FOUND AN INSTANCE WERE WE WOULD HAVE GIVEN UP TOO EARLY!");
+        exit(-1);
+      }
       return 0;
     }
 
@@ -636,24 +651,28 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     {
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.5f") % ctj_data_->qdot_(i);
+        //std::cout << boost::format("%10.5f") % ctj_data_->qdot_(i);
+        std::cout << boost::format("%20.15f") % ctj_data_->qdot_(i);
       }
       std::cout << std::endl;
     }
 
     // Check for stagnation in qdot every 4 iterations
-    if (solver_iteration % 4 == 0)
+    if (solver_iteration % 4 == 0 && debug_would_have_stopped == false)
     {
       bool has_change = false;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         // Store in temp so we only have to do absolute value once
         double temp = ctj_data_->qdot_(i);
-        if (ctj_data_->qdot_(i) == 0)
-          temp = fabs(ctj_data_->qdot_(i));
+        if (temp == 0) // take absolute value of zero only
+          temp = fabs(temp);
 
         // Only check if we haven't already found a non
-        if (!has_change && temp != ctj_data_->qdot_cache_(i))
+        //        double eps = 1e-10;
+        if (!has_change && // stop checking if we've already proved it has changed
+          (temp > ctj_data_->qdot_cache_(i) + epsilon_ * 0.01 ||
+            temp < ctj_data_->qdot_cache_(i) - epsilon_ * 0.01 ))
           has_change = true;
 
         ctj_data_->qdot_cache_(i) = temp;
@@ -664,8 +683,9 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         if (verbose_)
         {
           ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
-          ros::Duration(1).sleep();
+          //ros::Duration(1).sleep();
         }
+        debug_would_have_stopped = true;
         break;
       }
     }
