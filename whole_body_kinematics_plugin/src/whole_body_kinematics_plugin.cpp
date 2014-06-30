@@ -36,7 +36,7 @@
  */
 
 
-#include <moveit/simple_kdl_kinematics_plugin/simple_kdl_kinematics_plugin.h>
+#include <moveit/whole_body_kinematics_plugin/whole_body_kinematics_plugin.h>
 #include <class_loader/class_loader.h>
 
 #include <tf_conversions/tf_kdl.h>
@@ -51,22 +51,22 @@
 
 #include <boost/format.hpp>
 
-#include <moveit/simple_kdl_kinematics_plugin/kdl/utilities/svd_HH.hpp> // temp
+#include <moveit/whole_body_kinematics_plugin/kdl/utilities/svd_HH.hpp> // temp
 
-//register SimpleKDLKinematics as a KinematicsBase implementation
-CLASS_LOADER_REGISTER_CLASS(simple_kdl_kinematics_plugin::SimpleKDLKinematicsPlugin, kinematics::KinematicsBase)
+//register as a KinematicsBase implementation
+CLASS_LOADER_REGISTER_CLASS(whole_body_kinematics_plugin::WholeBodyKinematicsPlugin, kinematics::KinematicsBase)
 
-namespace simple_kdl_kinematics_plugin
+namespace whole_body_kinematics_plugin
 {
 
-SimpleKDLKinematicsPlugin::SimpleKDLKinematicsPlugin()
-  : verbose_(false)
+WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
+  : verbose_(true)
 {}
 
-void SimpleKDLKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
+void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
 {
   std::vector<double> jnt_array_vector(dimension_, 0.0);
-  robot_state_->setToRandomPositions(joint_model_group_);
+  robot_state_->setToRandomPositions(joint_model_group_, *rng_);
   robot_state_->copyJointGroupPositions(joint_model_group_, &jnt_array_vector[0]);
   for (std::size_t i = 0; i < dimension_; ++i)
   {
@@ -74,7 +74,7 @@ void SimpleKDLKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array)
   }
 }
 
-void SimpleKDLKinematicsPlugin::getRandomConfiguration(const KDL::JntArray &seed_state,
+void WholeBodyKinematicsPlugin::getRandomConfiguration(const KDL::JntArray &seed_state,
   const std::vector<double> &consistency_limits,
   KDL::JntArray &jnt_array) const
 {
@@ -91,7 +91,7 @@ void SimpleKDLKinematicsPlugin::getRandomConfiguration(const KDL::JntArray &seed
   }
 }
 
-bool SimpleKDLKinematicsPlugin::checkConsistency(const KDL::JntArray& seed_state,
+bool WholeBodyKinematicsPlugin::checkConsistency(const KDL::JntArray& seed_state,
   const std::vector<double> &consistency_limits,
   const KDL::JntArray& solution) const
 {
@@ -101,7 +101,7 @@ bool SimpleKDLKinematicsPlugin::checkConsistency(const KDL::JntArray& seed_state
   return true;
 }
 
-bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
+bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   const std::string& group_name,
   const std::string& base_frame,
   const std::vector<std::string>& tip_frames,
@@ -145,6 +145,17 @@ bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
     const std::vector<std::string> jm_names = joint_model_group_->getVariableNames();
     std::copy(jm_names.begin(), jm_names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
     std::cout << std::endl;
+  }
+
+  // Random number generator
+  if (true)
+  {
+    ROS_WARN_STREAM_NAMED("kdl","Using stochastic random joint selection");
+    rng_ = new random_numbers::RandomNumberGenerator(27349872); // stoachastic behavior
+  }
+  else
+  {
+    rng_ = new random_numbers::RandomNumberGenerator();
   }
 
   // Convert to KDL Tree
@@ -208,7 +219,7 @@ bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
     }
     else
     {
-      ROS_ERROR_STREAM_NAMED("kdl","This is the Simple KDL kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints");
+      ROS_ERROR_STREAM_NAMED("kdl","This is the Whole Body kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints");
     }
   }
 
@@ -265,12 +276,38 @@ bool SimpleKDLKinematicsPlugin::initialize(const std::string &robot_description,
   // Load the datastructures into memory needed for solving
   ctj_data_.reset(new CartesionToJointData(dimension_, tip_frames.size()));
 
+  // Load the velocity pinverse solver
+
+  // the weights applied in the joint space
+  // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
+  KDL::JntArray weights(dimension_);
+  for(unsigned int i=0; i < dimension_; i++)
+    weights(i) = 0.5; //0.5;
+
+  // if a singular value is below this value, its inverse is set to zero, default: 0.00001
+  double eps=0.00001;
+  // maximum iterations for the svd calculation, default: 150
+  int maxiter=150;
+  // alpha the null-space velocity gain
+  double alpha = 0.25;
+
+  // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
+  //KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, joint_min_, joint_max_, weights, eps, maxiter, alpha, verbose_);
+  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, kdl_chains_, joint_min_, joint_max_, 
+      weights, eps, maxiter, alpha, verbose_));
+
+  // Create fk solvers for each chain
+  for (std::size_t chain_id = 0; chain_id < kdl_chains_.size(); ++chain_id)
+  {
+    boost::shared_ptr<KDL::ChainFkSolverPos> temp (new KDL::ChainFkSolverPos_recursive(kdl_chains_[chain_id]));
+    fk_solvers_.push_back(temp);
+  }
 
   ROS_DEBUG_NAMED("kdl","KDL solver initialized");
   return true;
 }
 
-int SimpleKDLKinematicsPlugin::getJointIndex(const std::string &name) const
+int WholeBodyKinematicsPlugin::getJointIndex(const std::string &name) const
 {
   for (unsigned int i=0; i < ik_group_info_.joint_names.size(); i++) {
     if (ik_group_info_.joint_names[i] == name)
@@ -279,7 +316,7 @@ int SimpleKDLKinematicsPlugin::getJointIndex(const std::string &name) const
   return -1;
 }
 
-int SimpleKDLKinematicsPlugin::getKDLSegmentIndex(const std::string &name) const
+int WholeBodyKinematicsPlugin::getKDLSegmentIndex(const std::string &name) const
 {
   /*
     int i=0;
@@ -293,12 +330,12 @@ int SimpleKDLKinematicsPlugin::getKDLSegmentIndex(const std::string &name) const
   */
 }
 
-bool SimpleKDLKinematicsPlugin::timedOut(const ros::WallTime &start_time, double duration) const
+bool WholeBodyKinematicsPlugin::timedOut(const ros::WallTime &start_time, double duration) const
 {
   return ((ros::WallTime::now()-start_time).toSec() >= duration);
 }
 
-bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs::Pose> &ik_poses,
+bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs::Pose> &ik_poses,
   const std::vector<double> &ik_seed_state,
   double timeout,
   const std::vector<double> &consistency_limits,
@@ -308,8 +345,11 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   const kinematics::KinematicsQueryOptions &options,
   const moveit::core::RobotState* context_state) const
 {
+  ROS_INFO_STREAM_NAMED("searchPositionIK","Starting MoveIt Whole Body IK Solver --------------------------------------");
+
   ros::WallTime n1 = ros::WallTime::now();
 
+  // Check if ROS is ok
   if (!ros::ok())
   {
     ROS_ERROR_STREAM_NAMED("cartesianToJoint","ROS requested shutdown");
@@ -345,45 +385,6 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   KDL::JntArray jnt_seed_state(dimension_);
   KDL::JntArray jnt_pos_in(dimension_);
   KDL::JntArray jnt_pos_out(dimension_);
-
-  // Setup Inv Kin Solver -------------------------------------
-  // the desired positions of the chain used to resolve the redundancy
-  KDL::JntArray opt_positions(dimension_);
-  //for(unsigned int i=0; i < dimension_; i++)
-  //  opt_positions(i) = ik_seed_state[i]; // This could also be half of joint range value, or minimum torque value
-
-  // Set to midpoint of each joint
-  //std::cout << "Setting desired positions: " << std::endl;
-  for (std::size_t i = 0; i < joint_model_group_->getActiveJointModels().size(); ++i)
-  {
-    moveit::core::VariableBounds bounds = joint_model_group_->getActiveJointModels()[i]->getVariableBounds()[0];
-    opt_positions(i) = (bounds.min_position_ + bounds.max_position_) / 2.0;
-    std::cout << "pos " << i << ": " << opt_positions(i) << std::endl;
-  }
-
-  // the weights applied in the joint space
-  // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
-  KDL::JntArray weights(dimension_);
-  for(unsigned int i=0; i < dimension_; i++)
-    weights(i) = 0.5; //0.5;
-
-  // if a singular value is below this value, its inverse is set to zero, default: 0.00001
-  double eps=0.00001;
-  // maximum iterations for the svd calculation, default: 150
-  int maxiter=150;
-  // alpha the null-space velocity gain
-  double alpha = 0.25;
-
-  // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
-  KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, opt_positions, weights, eps, maxiter, alpha, verbose_);
-
-  // Create fk solvers for each chain
-  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > fk_solvers;
-  for (std::size_t chain_id = 0; chain_id < kdl_chains_.size(); ++chain_id)
-  {
-    boost::shared_ptr<KDL::ChainFkSolverPos> temp (new KDL::ChainFkSolverPos_recursive(kdl_chains_[chain_id]));
-    fk_solvers.push_back(temp);
-  }
 
   // Setup solution struct
   solution.resize(dimension_);
@@ -444,7 +445,7 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     }
 
     // Solve
-    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out, fk_solvers, ik_solver_vel);
+    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out);
 
     // Check solution
     if( !consistency_limits.empty() &&
@@ -477,7 +478,9 @@ bool SimpleKDLKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     // Check if callback was sucessful
     if(error_code.val == error_code.SUCCESS)
     {
-      ROS_DEBUG_STREAM_NAMED("kdl","Solved after " << counter << " iterations");
+      static int total_iterations = 0;
+      total_iterations += counter;
+      ROS_DEBUG_STREAM_NAMED("kdl","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
       return true;
     }
   }
@@ -500,19 +503,20 @@ void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k)
 
 /* \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
  *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account. */
-int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out,
-  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > &fk_solvers, KDL::IkSolverVel_pinv_nso& ik_solver_vel) const
+int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out) const
 {
   // First solution guess is the seed state
   q_out = q_init;
 
-  // TEMP:
+  // TEMP VARS:
   int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
+  bool debug_would_have_stopped = false; // used for testing if we stopped to soon
+  bool basic_debugging = false;
+  bool use_robot_state = true; // TODO choose one
 
-  bool use_robot_state = true;
+  // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
-  bool debug_would_have_stopped = false;
 
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
@@ -543,7 +547,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
-      if (true) //verbose_ && solver_iteration % 10 == 0)
+      if (basic_debugging) //verbose_ && solver_iteration % 10 == 0)
       {
         // Publish
         visual_tools_->publishRobotState(robot_state_);
@@ -572,7 +576,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         }
 
         // Forward kinematics from current guess to new frame
-        fk_solvers[pose_id]->JntToCart(q_out_subgroup, ctj_data_->current_pose_);
+        fk_solvers_[pose_id]->JntToCart(q_out_subgroup, ctj_data_->current_pose_);
 
         // Convert subgroup to q_out
         for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
@@ -627,7 +631,9 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     // Check if we are done
     if (all_poses_valid)
     {
-      ROS_DEBUG_STREAM_NAMED("cartesionToJoint","All of our end effectors are withing epsilon tolerance of goal location");
+      if (verbose_)
+        ROS_DEBUG_STREAM_NAMED("cartesionToJoint","All of our end effectors are withing epsilon tolerance of goal location");
+
       if (debug_would_have_stopped)
       {
         ROS_ERROR_STREAM_NAMED("temp","FOUND AN INSTANCE WERE WE WOULD HAVE GIVEN UP TOO EARLY!");
@@ -638,11 +644,11 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel.CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->qdot_);
+    ik_solver_vel_->CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->qdot_);
 
 
     // See velocities
-    if (verbose_ || true)
+    if (verbose_ || basic_debugging)
     {
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
@@ -714,7 +720,7 @@ int SimpleKDLKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   return -3;
 }
 
-bool SimpleKDLKinematicsPlugin::getPositionFK(const std::vector<std::string> &link_names,
+bool WholeBodyKinematicsPlugin::getPositionFK(const std::vector<std::string> &link_names,
   const std::vector<double> &joint_angles,
   std::vector<geometry_msgs::Pose> &poses) const
 {
@@ -743,7 +749,7 @@ bool SimpleKDLKinematicsPlugin::getPositionFK(const std::vector<std::string> &li
   return false;
 }
 
-const bool SimpleKDLKinematicsPlugin::supportsGroup(const moveit::core::JointModelGroup *jmg,
+const bool WholeBodyKinematicsPlugin::supportsGroup(const moveit::core::JointModelGroup *jmg,
   std::string* error_text_out) const
 {
   if (jmg->isChain())
@@ -761,5 +767,5 @@ const bool SimpleKDLKinematicsPlugin::supportsGroup(const moveit::core::JointMod
 
 } // namespace
 
-//PLUGINLIB_EXPORT_CLASS(simple_kdl_kinematics_plugin::SimpleKDLKinematicsPlugin,
+//PLUGINLIB_EXPORT_CLASS(whole_body_kinematics_plugin::WholeBodyKinematicsPlugin,
 //  kinematics::KinematicsBase);

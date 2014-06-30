@@ -1,0 +1,7 @@
+<library path="lib/libmoveit_whole_body_kinematics_plugin">
+  <class name="whole_body_kinematics_plugin/WholeBodyKinematicsPlugin" type="whole_body_kinematics_plugin::WholeBodyKinematicsPlugin" base_class_type="kinematics::KinematicsBase">
+    <description>
+      Non-chain inverse kinematics solver for MoveIt!
+    </description>
+  </class>
+</library>

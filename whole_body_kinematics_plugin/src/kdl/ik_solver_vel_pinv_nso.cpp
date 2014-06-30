@@ -19,14 +19,14 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-#include <moveit/simple_kdl_kinematics_plugin/kdl/ik_solver_vel_pinv_nso.hpp> // customized ik generalize pseudo inverse
+#include <moveit/whole_body_kinematics_plugin/kdl/ik_solver_vel_pinv_nso.hpp> // customized ik generalize pseudo inverse
 #include <iostream> // TODO remove
 
 namespace KDL
 {
 
-IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const std::vector<Chain>& _chains, JntArray _opt_pos, JntArray _weights,
-  double _eps, int _maxiter, double _alpha, bool _verbose):
+IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const std::vector<Chain>& _chains, JntArray _joint_min, JntArray _joint_max,
+  JntArray _weights, double _eps, int _maxiter, double _alpha, bool _verbose):  
   chains(_chains),
   jnt2jac(chains, _num_joints, _verbose), // TODO num joints was 7, now its 14, is that ok?
   // Load the jacobian to have #joint ROWS x #tips COLS
@@ -42,12 +42,27 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const
   alpha(_alpha),
   num_tips(_num_tips),
   weights(_weights),
-  opt_pos(_opt_pos),
+  // Properties of joint
+  joint_min(_joint_min),
+  joint_max(_joint_max),
+  joint_mid(_joint_min.rows()),
+  joint_constant(_joint_min.rows()),
+  // Debugging
   verbose(_verbose)
 {
   //std::cout << "CREATED JACOBIAN WITH " << opt_pos.rows() << " columns and " << _num_tips * 6<< " rows " << std::endl;
   //SetToZero(jacobian);
   //jacobian.print();
+
+
+  for (std::size_t i = 0; i < joint_min.rows(); ++i)
+  {
+    // Calculate midpoint of all joints
+    joint_mid(i) = (joint_max(i) + joint_min(i)) / 2.0;
+
+    // Calculate a component of the Zghal performance criterion
+    joint_constant(i) = (joint_max(i) - joint_min(i)) * (joint_max(i) - joint_min(i));
+  }
 }
 
 /**
@@ -57,6 +72,11 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const
  */
 int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, JntArray& qdot_out)
 {
+  /* Notes:
+     jacobian.rows() = num_tips * 6
+     jacobian.columns() = num_joint
+   */
+
   //Let the ChainJntToJacSolver calculate the jacobian "jac" for
   //the current joint positions "q_in"
   jnt2jac.JntToJac(q_in,jacobian);
@@ -75,7 +95,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
 
   int ret = svd.calculate(jacobian,U,S,V,maxiter);
 
-  double sum;
+  double sum, component;
   unsigned int i,j;
 
   // We have to calculate qdot_out = jac_pinv*xdot_in
@@ -121,13 +141,37 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   // Now onto NULL space ==========================================================
 
   // Create weighted position error vector
+  bool show_weights = false;
+
+  if (show_weights)
+    std::cout << "Weights:  ";
   for(i = 0; i < jacobian.columns(); i++)
   {
     // Original:
-    tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
+    if (false)
+    {
+      tmp(i) = weights(i)*(joint_mid(i) - q_in(i));
+    }
+    // Liegeois paper on GPM ----------------------------------
+    else if (false)
+    {
+      // Calculate H(q)
+      component = ( q_in(i) - joint_mid(i) ) / ( joint_mid(i) - joint_max(i) );
 
-    //tmp(i) = weights(i)*(opt_pos(i) - q_in(i));
+      // We now have k*H(q)
+      tmp(i) = weights(i)* (component*component) / jacobian.columns();
+    }
+    else
+    {
+      // Performance criterion
+      tmp(i) = 0.25 * joint_constant(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
+      
+    }
+    if (show_weights)
+      std::cout << tmp(i) << " | ";
   }
+  if (show_weights)
+    std::cout << std::endl;
 
   //Vtn*tmp
   // temp2 is a vector the length of our redudant dofs (joints n - 6)
@@ -151,8 +195,10 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
       sum += V[i](j)*tmp2(j);
     }
     
-   qdot_out(i) += alpha*sum;
+    std::cout << alpha*sum << "  ";
+    qdot_out(i) += alpha*sum;
   }
+  std::cout << std::endl;
 
   // Debug
   if (verbose)
@@ -171,12 +217,6 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
 int IkSolverVel_pinv_nso::setWeights(const JntArray & _weights)
 {
   weights = _weights;
-  return 0;
-}
-
-int IkSolverVel_pinv_nso::setOptPos(const JntArray & _opt_pos)
-{
-  opt_pos = _opt_pos;
   return 0;
 }
 

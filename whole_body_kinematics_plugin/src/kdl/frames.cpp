@@ -25,7 +25,7 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <moveit/simple_kdl_kinematics_plugin/kdl/frames.hpp>
+#include <moveit/whole_body_kinematics_plugin/kdl/frames.hpp>
 
 #define _USE_MATH_DEFINES  // For MSVC
 #include <math.h>
@@ -33,7 +33,7 @@
 namespace KDL {
 
 #ifndef KDL_INLINE
-#include <moveit/simple_kdl_kinematics_plugin/kdl/frames.inl>
+#include <moveit/whole_body_kinematics_plugin/kdl/frames.inl>
 #endif
 
     void Frame::Make4x4(double * d)

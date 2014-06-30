@@ -61,7 +61,7 @@ public:
    * @param alpha the null-space velocity gain
    *
    */
-  IkSolverVel_pinv_nso(int num_tips, int num_joints, const std::vector<Chain>& chains, JntArray opt_pos, JntArray weights, 
+  IkSolverVel_pinv_nso(int num_tips, int num_joints, const std::vector<Chain>& chains, JntArray joint_min, JntArray joint_max, JntArray weights, 
     double eps=0.00001,int maxiter=150, double alpha = 0.25, bool verbose = false);
 
   ~IkSolverVel_pinv_nso() {};
@@ -74,14 +74,6 @@ public:
    *
    */
   virtual int setWeights(const JntArray &weights);
-
-  /**
-   *Set optimal joint positions
-   *
-   *@param opt_pos optimal joint positions
-   *
-   */
-  virtual int setOptPos(const JntArray &opt_pos);
 
   /**
    *Set null psace velocity gain
@@ -106,7 +98,10 @@ private:
 
   double alpha;
   JntArray weights;
-  JntArray opt_pos;
+  JntArray joint_min;
+  JntArray joint_max;
+  JntArray joint_mid;
+  JntArray joint_constant;
   int num_tips; // number of end effectors to solve for
   bool verbose; // to show output debug info or not
 };

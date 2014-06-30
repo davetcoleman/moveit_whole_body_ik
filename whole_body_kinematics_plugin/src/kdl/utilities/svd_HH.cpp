@@ -22,7 +22,7 @@
 
 //Based on the svd of the KDL-0.2 library by Erwin Aertbelien
 
-#include <moveit/simple_kdl_kinematics_plugin/kdl/utilities/svd_HH.hpp>
+#include <moveit/whole_body_kinematics_plugin/kdl/utilities/svd_HH.hpp>
 
 namespace KDL
 {

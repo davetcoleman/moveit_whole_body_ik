@@ -1,7 +1,0 @@
-<library path="lib/libmoveit_simple_kdl_kinematics_plugin">
-  <class name="simple_kdl_kinematics_plugin/SimpleKDLKinematicsPlugin" type="simple_kdl_kinematics_plugin::SimpleKDLKinematicsPlugin" base_class_type="kinematics::KinematicsBase">
-    <description>
-      Non-chain inverse kinematics solver for MoveIt!
-    </description>
-  </class>
-</library>

@@ -24,7 +24,7 @@ catkin_package(
   LIBRARIES
 
   INCLUDE_DIRS
-    simple_kdl_kinematics_plugin/include
+    whole_body_kinematics_plugin/include
   CATKIN_DEPENDS
     moveit_visual_tools
     pluginlib
@@ -32,7 +32,7 @@ catkin_package(
     moveit_ros_planning
 )
 
-include_directories(simple_kdl_kinematics_plugin/include
+include_directories(whole_body_kinematics_plugin/include
                     ${catkin_INCLUDE_DIRS}
 		    )
 
@@ -44,10 +44,10 @@ include_directories(SYSTEM
 link_directories(${Boost_LIBRARY_DIRS})
 link_directories(${catkin_LIBRARY_DIRS})
 
-add_subdirectory(simple_kdl_kinematics_plugin)
+add_subdirectory(whole_body_kinematics_plugin)
 
 install(
   FILES
-    simple_kdl_kinematics_plugin_description.xml
+    whole_body_kinematics_plugin_description.xml
   DESTINATION
     ${CATKIN_PACKAGE_SHARE_DESTINATION})

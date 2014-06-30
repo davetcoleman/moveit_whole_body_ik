@@ -68,19 +68,22 @@
 // Helper for Rviz
 #include <moveit_visual_tools/visual_tools.h>
 
-namespace simple_kdl_kinematics_plugin
+// Random numbers
+#include <random_numbers/random_numbers.h>
+
+namespace whole_body_kinematics_plugin
 {
 /**
  * @brief Specific implementation of kinematics using KDL. This version can be used with any robot.
  */
-class SimpleKDLKinematicsPlugin : public kinematics::KinematicsBase
+class WholeBodyKinematicsPlugin : public kinematics::KinematicsBase
 {
 public:
 
   /**
    *  @brief Default constructor
    */
-  SimpleKDLKinematicsPlugin();
+  WholeBodyKinematicsPlugin();
 
   virtual bool getPositionIK(const geometry_msgs::Pose &ik_pose,
     const std::vector<double> &ik_seed_state,
@@ -313,8 +316,7 @@ private:
    * \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
    *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account.
    */
-  int cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out,
-    std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > &fk_solvers, KDL::IkSolverVel_pinv_nso& ik_solver_vel) const;
+  int cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out) const;
 
   /** @brief Check whether the solution lies within the consistency limit of the seed state
    *  @param seed_state Seed state
@@ -371,6 +373,13 @@ private:
   // For visualizing things in rviz
   moveit_visual_tools::VisualToolsPtr visual_tools_;
 
+  // Velocity Pseudo Inverse Solver
+  typedef boost::shared_ptr<KDL::IkSolverVel_pinv_nso> IkSolverVelPinvNsoPtr;
+  IkSolverVelPinvNsoPtr ik_solver_vel_;
+
+  // Forward kinematic solvers
+  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > fk_solvers_;
+
   // Variables for use in cartesionToJoint() ------------------------
   struct CartesionToJointData
   {
@@ -391,6 +400,8 @@ private:
 
   CartesionToJointDataPtr ctj_data_;
   // ----------------------------------------------------------------
+
+  random_numbers::RandomNumberGenerator *rng_;
 };
 }
 
