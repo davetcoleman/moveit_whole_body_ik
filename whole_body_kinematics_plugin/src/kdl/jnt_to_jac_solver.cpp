@@ -111,7 +111,7 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
       (*sub_q_ins[chain_id])(j - joint_start_index) = q_in(j);
 
       if (verbose)
-        std::cout << (*sub_q_ins[chain_id])(j) << std::endl;
+        std::cout << (*sub_q_ins[chain_id])(j - joint_start_index) << std::endl;
     }
     if (verbose)
       std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;

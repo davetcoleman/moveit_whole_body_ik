@@ -60,7 +60,7 @@ namespace whole_body_kinematics_plugin
 {
 
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
-  : verbose_(true)
+  : verbose_(false)
 {}
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
@@ -89,6 +89,8 @@ void WholeBodyKinematicsPlugin::getRandomConfiguration(const KDL::JntArray &seed
   {
     jnt_array(i) = values[i];
   }
+
+  ROS_ERROR_STREAM_NAMED("temp","getRandomConfiguration with consistency limits called!");
 }
 
 bool WholeBodyKinematicsPlugin::checkConsistency(const KDL::JntArray& seed_state,
@@ -138,12 +140,12 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     return false;
   }
 
-  // Verbose
+  // Debug joints
   if (verbose_)
   {
     std::cout << std::endl << "Joint Model Variable Names: ------------------------------------------- " << std::endl;
     const std::vector<std::string> jm_names = joint_model_group_->getVariableNames();
-    std::copy(jm_names.begin(), jm_names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+    //    std::copy(jm_names.begin(), jm_names.end(), std::ostream_iterator<doublea>(std::cout, "\n"));
     std::cout << std::endl;
   }
 
@@ -158,6 +160,18 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     rng_ = new random_numbers::RandomNumberGenerator();
   }
 
+  // View tip frames
+  if (verbose_)
+  {
+    std::cout << std::endl << "Tip Link Names: ------------------------------------------- " << std::endl;
+    std::copy(tip_frames_.begin(), tip_frames_.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+    std::cout << std::endl;
+
+    std::cout << "Used to Expect: ----------------" << std::endl;
+    std::cout << " - LARM_LINK6 " << std::endl;
+    std::cout << " - RARM_LINK6 " << std::endl;
+  }
+
   // Convert to KDL Tree
   KDL::Tree kdl_tree;
 
@@ -168,37 +182,26 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
 
   // Convert to multiple KDL chains
-  // Hard coded for now, just for HRP2
-
   static const std::string BASE_LINK  = "BODY";
   static const std::string CHEST_LINK  = "CHEST_LINK1";
-  static const std::string LEFT_ARM_LINK = "LARM_LINK6";
-  static const std::string RIGHT_ARM_LINK = "RARM_LINK6";
+  
+  int number_of_chains = tip_frames_.size();
+  kdl_chains_.resize(number_of_chains);
 
-  kdl_chains_.resize(2);
-
-  // Left Chain
-  if (!kdl_tree.getChain(CHEST_LINK, LEFT_ARM_LINK, kdl_chains_[0]))
+  for (std::size_t i = 0; i < number_of_chains; ++i)
   {
-    ROS_ERROR_NAMED("kdl","Could not initialize chain object");
-    return false;
-  }
+    // One chain per tip
+    if (!kdl_tree.getChain(CHEST_LINK, tip_frames_[i], kdl_chains_[i]))
+    {
+      ROS_ERROR_STREAM_NAMED("kdl","Could not initialize chain object from " << CHEST_LINK << " to " << tip_frames_[i]);
+      return false;
+    }    
 
-  // Right Chain
-  if (!kdl_tree.getChain(CHEST_LINK, RIGHT_ARM_LINK, kdl_chains_[1]))
-  {
-    ROS_ERROR_NAMED("kdl","Could not initialize chain object");
-    return false;
+    if (verbose_)
+      ROS_INFO_STREAM_NAMED("kdl","Created chain object from " << CHEST_LINK << " to " << tip_frames_[i] 
+        << " with " << kdl_chains_[i].getNrOfJoints() << " joints");
   }
-
-  /*
-  // Torso Chain
-  if (!kdl_tree.getChain(BASE_LINK, CHEST_LINK, kdl_chains_[2]))
-  {
-  ROS_ERROR_NAMED("kdl","Could not initialize chain object");
-  return false;
-  }
-  */
+  // TODO: account for torso that is shared
 
   // Get the num of dimensions
   ROS_INFO_STREAM_NAMED("temp","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
@@ -227,17 +230,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   fk_group_info_.joint_names = ik_group_info_.joint_names;
   fk_group_info_.limits = ik_group_info_.limits;
 
-  if (verbose_)
-  {
-    std::cout << std::endl << "Tip Link Names: ------------------------------------------- " << std::endl;
-    std::copy(tip_frames_.begin(), tip_frames_.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
-    std::cout << std::endl;
-
-    std::cout << "Expect: ----------------" << std::endl;
-    std::cout << " - LARM_LINK6 " << std::endl;
-    std::cout << " - RARM_LINK6 " << std::endl;
-  }
-
   // Make sure all the tip links are in the link_names vector
   for (std::size_t i = 0; i < tip_frames_.size(); ++i)
   {
@@ -250,6 +242,10 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
   fk_group_info_.link_names = joint_model_group_->getLinkModelNames();
 
+  // DEBUG
+  std::cout << "Total link names: " << std::endl;
+  std::copy(ik_group_info_.link_names.begin(), ik_group_info_.link_names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+
   // Populate the joint limits
   joint_min_.resize(ik_group_info_.limits.size());
   joint_max_.resize(ik_group_info_.limits.size());
@@ -259,7 +255,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     joint_max_(i) = ik_group_info_.limits[i].max_position;
   }
 
-  // Get Solver Parameters
+  // Get Solver Parameters from param server
   private_handle.param("max_solver_iterations", max_solver_iterations_, 500);
   private_handle.param("epsilon", epsilon_, 1e-5);
   ROS_DEBUG_NAMED("kdl","Looking in private handle: %s for param name: %s",
@@ -275,8 +271,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // Load the datastructures into memory needed for solving
   ctj_data_.reset(new CartesionToJointData(dimension_, tip_frames.size()));
-
-  // Load the velocity pinverse solver
 
   // the weights applied in the joint space
   // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
@@ -345,7 +339,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   const kinematics::KinematicsQueryOptions &options,
   const moveit::core::RobotState* context_state) const
 {
-  ROS_INFO_STREAM_NAMED("searchPositionIK","Starting MoveIt Whole Body IK Solver --------------------------------------");
+  //ROS_INFO_STREAM_NAMED("searchPositionIK","Starting MoveIt Whole Body IK Solver --------------------------------------");
 
   ros::WallTime n1 = ros::WallTime::now();
 
@@ -381,12 +375,20 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     return false;
   }
 
+  if (verbose_)
+  {
+    for (std::size_t i = 0; i < ik_poses.size(); ++i)
+    {
+      std::cout << "Pose " << i << ": \n" << ik_poses[i] << std::endl;
+    }
+  }
+
   // Joint arrays
   KDL::JntArray jnt_seed_state(dimension_);
   KDL::JntArray jnt_pos_in(dimension_);
   KDL::JntArray jnt_pos_out(dimension_);
 
-  // Setup solution struct
+  // Setup solution vector
   solution.resize(dimension_);
 
   // Convert format of pose
@@ -402,10 +404,14 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   for(unsigned int i=0; i < dimension_; i++)
   {
     jnt_seed_state(i) = ik_seed_state[i];
-
-    if (verbose_)
-      std::cout << "Seed state " << i << ": " << ik_seed_state[i] << std::endl;
   }
+  if (verbose_)
+  {
+    std::cout << "Seed state: ";
+    std::copy(ik_seed_state.begin(), ik_seed_state.end(), std::ostream_iterator<double>(std::cout, ", "));
+    std::cout << std::endl;
+  }
+
   jnt_pos_in = jnt_seed_state;
 
   // Loop until solution is within epsilon
@@ -469,8 +475,8 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     // Optionally check again with custom callback
     if(!solution_callback.empty())
     {
-      ROS_ERROR_STREAM_NAMED("temp","Not sure how to handle a multi-pose callback");
-      solution_callback(ik_poses[0], solution, error_code);
+      geometry_msgs::Pose dummy; // do emphasize that this pose is not used
+      solution_callback(dummy, solution, error_code);
     }
     else
       error_code.val = error_code.SUCCESS;
@@ -541,8 +547,9 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
       if (verbose_)
       {
-        std::cout << "Input robot state joints: " << std::endl;
-        std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, "\n"));
+        std::cout << "Current joint values: " ;
+        std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, ", "));
+        std::cout << std::endl;
       }
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
@@ -568,6 +575,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
           }*/
 
         // Convert q_out to its subgroup
+        ROS_ERROR_STREAM_NAMED("temp","This is currently backwards - need to map groups in reverse");
         for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
         {
           q_out_subgroup(i) = q_out(i + pose_id * dimension_of_subgroup);
@@ -590,11 +598,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       {
 
         // Do forward kinematics to get new EE pose location
-        Eigen::Affine3d eef_pose;
-        if (pose_id == 0)
-          eef_pose = robot_state_->getGlobalLinkTransform("LARM_LINK6");
-        else
-          eef_pose = robot_state_->getGlobalLinkTransform("RARM_LINK6");
+        Eigen::Affine3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
 
         // Bring the pose to the frame of the IK solver
         robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
@@ -621,6 +625,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     // See twist delta
     if (verbose_)
     {
+      std::cout << "Twist: ";
       for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
       {
         std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(i);
@@ -639,6 +644,15 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         ROS_ERROR_STREAM_NAMED("temp","FOUND AN INSTANCE WERE WE WOULD HAVE GIVEN UP TOO EARLY!");
         exit(-1);
       }
+
+      if (verbose_)
+      {
+        std::cout << "FINAL SOLUTIONS: ";
+        for (std::size_t i = 0; i < q_out.rows(); ++i)
+          std::cout << q_out(i) << ", ";
+        std::cout << std::endl;
+      }
+
       return 0;
     }
 
@@ -650,6 +664,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     // See velocities
     if (verbose_ || basic_debugging)
     {
+      std::cout << "Qdot: ";
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         std::cout << boost::format("%11.7f") % ctj_data_->qdot_(i);
@@ -684,16 +699,16 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         if (verbose_ || true)
         {
           ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
-          //ros::Duration(1).sleep();
         }
         debug_would_have_stopped = true;
-        break;
+        //break;
       }
     }
 
 
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
-    Add(q_out, ctj_data_->qdot_, q_out); // q_out = q_out + q_delta
+    // q_out = q_out + q_dot
+    Add(q_out, ctj_data_->qdot_, q_out); 
 
     // Enforce joint limits
     for (unsigned int j = 0; j < q_out.rows(); j++)
@@ -711,9 +726,6 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         q_out(j) = joint_max_(j);
       }
     }
-
-    // Check if we are stuck in some singularity point
-
   }
 
   // We never found a close enough solution

@@ -81,7 +81,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   //the current joint positions "q_in"
   jnt2jac.JntToJac(q_in,jacobian);
 
-  if (verbose)
+  if (verbose && false)
   {
     std::cout << "Resulting Combined Jacobian:" << std::endl;
     jacobian.print();
@@ -139,7 +139,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   }
 
   // Now onto NULL space ==========================================================
-
+  /*
   // Create weighted position error vector
   bool show_weights = false;
 
@@ -187,6 +187,8 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
 
   // Add the velocity of the null space redudancy to our qdot_out
   // qdot_out = qdot_out + alpha*temp2
+  if (verbose)
+    std::cout << "Null space: ";
   for (i = 0;i<jacobian.columns();i++)
   {
     sum = 0.0;
@@ -195,15 +197,18 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
       sum += V[i](j)*tmp2(j);
     }
     
-    std::cout << alpha*sum << "  ";
+    if (verbose)
+      std::cout << alpha*sum << "  ";
     qdot_out(i) += alpha*sum;
   }
-  std::cout << std::endl;
+  if (verbose)
+    std::cout << std::endl;
+  */
 
   // Debug
   if (verbose)
   {
-    std::cout << "Final Solution: " << std::endl;
+    std::cout << "Joint Velocity: " << std::endl;
     for (std::size_t i = 0; i < qdot_out.rows(); ++i)
     {
       std::cout << "Joint " << i << ": " << qdot_out(i) << std::endl;
