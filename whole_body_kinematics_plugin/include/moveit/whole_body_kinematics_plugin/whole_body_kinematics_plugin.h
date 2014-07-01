@@ -58,7 +58,9 @@
 #include "kdl/chain.hpp"
 #include "kdl/frames.hpp"
 #include "kdl/jntarray.hpp"
-#include <kdl/chainfksolverpos_recursive.hpp> // forward kinematics
+
+// This pkg
+#include <moveit/whole_body_kinematics_plugin/jacobian_generator.h>
 
 // MoveIt!
 #include <moveit/kinematics_base/kinematics_base.h>
@@ -356,6 +358,8 @@ private:
 
   std::vector<KDL::Chain> kdl_chains_;
 
+  std::vector<MatrixCoords> jacobian_coords_;
+
   unsigned int dimension_; /** Dimension of the group */
 
   KDL::JntArray joint_min_, joint_max_; /** Joint limits */
@@ -376,9 +380,7 @@ private:
   // Velocity Pseudo Inverse Solver
   typedef boost::shared_ptr<KDL::IkSolverVel_pinv_nso> IkSolverVelPinvNsoPtr;
   IkSolverVelPinvNsoPtr ik_solver_vel_;
-
-  // Forward kinematic solvers
-  std::vector<boost::shared_ptr<KDL::ChainFkSolverPos> > fk_solvers_;
+  JacobianGeneratorPtr jacobian_generator_;
 
   // Variables for use in cartesionToJoint() ------------------------
   struct CartesionToJointData
@@ -387,13 +389,15 @@ private:
       : qdot_(dimension),
         qdot_cache_(dimension),
         delta_twists_( num_poses * 6 ),
-        current_joint_values_(dimension)
+        current_joint_values_(dimension),
+        jacobian_(dimension, num_poses * 6) // TODO fix
     {}
     KDL::Twist delta_twist_; // velocity and rotational velocity
     KDL::JntArray delta_twists_; // multiple twists from different end effectors, each of which have 6 dof
     KDL::JntArray qdot_;
     KDL::JntArray qdot_cache_;
     KDL::Frame current_pose_;
+    KDL::Jacobian2d jacobian_;
     std::vector<double> current_joint_values_; // for visualizing. perhaps remove?
   };
   typedef boost::shared_ptr<CartesionToJointData> CartesionToJointDataPtr;

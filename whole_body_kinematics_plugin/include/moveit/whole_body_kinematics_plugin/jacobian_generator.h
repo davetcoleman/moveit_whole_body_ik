@@ -19,13 +19,13 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-#ifndef KDL_JNTTOJACSOLVER_HPP
-#define KDL_JNTTOJACSOLVER_HPP
+#ifndef MOVEIT_WHOLE_BODY_IK__JACOBIAN_GENERATOR_H
+#define MOVEIT_WHOLE_BODY_IK__JACOBIAN_GENERATOR_H
 
-#include "frames.hpp"
-#include "jacobian.hpp"
-#include "jntarray.hpp"
-#include "chain.hpp"
+#include "kdl/frames.hpp"
+#include "kdl/jacobian.hpp"
+#include "kdl/jntarray.hpp"
+#include "kdl/chain.hpp"
 #include <boost/shared_ptr.hpp>
 
 // Change text color on console output
@@ -36,22 +36,19 @@
 #define OMPL_CONSOLE_COLOR_BROWN "\033[93m"
 #define OMPL_CONSOLE_COLOR_RED "\033[91m"
 
-namespace KDL
+namespace whole_body_kinematics_plugin
 {
+
+typedef std::pair< std::size_t, std::size_t > MatrixCoords; //row, col
 
 /**
- * @brief  Class to calculate the jacobian of a general
- * KDL::Chain, it is used by other solvers. It should not be used
- * outside of KDL.
- *
- *
+ * @brief  Class to calculate the jacobian of a set of KDL::Chains
  */
-
-class JntToJacSolver
+class JacobianGenerator
 {
 public:
-  explicit JntToJacSolver(const std::vector<Chain>& chains, int num_joints, bool verbose);
-  virtual ~JntToJacSolver();
+  explicit JacobianGenerator(const std::vector<KDL::Chain>& chains, const std::vector<MatrixCoords>& jacobian_coords, int num_joints, bool verbose);
+  virtual ~JacobianGenerator();
 
   /**
    * Calculate the jacobian expressed in the base frame of the
@@ -64,40 +61,42 @@ public:
    *
    * @return always returns 0
    */
-  virtual int JntToJac(const JntArray& q_in, Jacobian2d& jac, int segmentNR=-1);
+  virtual int JntToJac(const KDL::JntArray& q_in, KDL::Jacobian2d& jac, int segmentNR=-1);
 
   /**
    * \brief Find jacobian for single chain
    */
-  int JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const int seg_nr, const int chain_id);
+  int JntToJacSingle(const KDL::JntArray& q_in, KDL::Jacobian2d& jac, const int seg_nr, const int chain_id);
 
   int setLockedJoints(const std::vector<bool> locked_joints);
 private:
 
-  Twist t_twist_tmp; // base of new segment's twist
-  Frame T_frame_tmp;
-  Frame total_frame;
+  KDL::Twist t_twist_tmp; // base of new segment's twist
+  KDL::Frame T_frame_tmp;
+  KDL::Frame total_frame;
 
   std::vector<bool> locked_joints_;
   unsigned int nr_of_unlocked_joints_;
   bool verbose;
 
   // All the chains that are combined to make a jacobian
-  const std::vector<Chain> chains;
+  const std::vector<KDL::Chain> chains_;
+
+  // Mapping from subjacobians to their location in the combined jacobian
+  const std::vector<MatrixCoords> jacobian_coords_;
 
   // Store allocated memory for every chain
-  std::vector<Jacobian2dPtr> sub_jacobians;
+  std::vector<KDL::Jacobian2dPtr> sub_jacobians;
 
   // Sub joint index for every chain
-  std::vector<JntArrayPtr> sub_q_ins;
+  std::vector<KDL::JntArrayPtr> sub_q_ins;
 
   // Used in JntToJacSingle
   unsigned int segmentNr;
 
-
 };
 
-
+typedef boost::shared_ptr<JacobianGenerator> JacobianGeneratorPtr;
 
 }
 #endif

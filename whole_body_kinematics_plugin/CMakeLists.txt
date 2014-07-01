@@ -2,12 +2,12 @@ set(MOVEIT_LIB_NAME moveit_whole_body_kinematics_plugin)
 
 add_library(${MOVEIT_LIB_NAME} 
   src/whole_body_kinematics_plugin.cpp 
+  src/jacobian_generator.cpp
   src/kdl/ik_solver_vel_pinv_nso.cpp
   src/kdl/chain.cpp
   src/kdl/frames.cpp
   src/kdl/jacobian.cpp
   src/kdl/jntarray.cpp
-  src/kdl/jnt_to_jac_solver.cpp
   src/kdl/utilities/svd_HH.cpp
 )
 

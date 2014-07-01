@@ -186,22 +186,68 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   static const std::string CHEST_LINK  = "CHEST_LINK1";
   
   int number_of_chains = tip_frames_.size();
-  kdl_chains_.resize(number_of_chains);
 
-  for (std::size_t i = 0; i < number_of_chains; ++i)
+  bool include_torso = true;
+  if (include_torso)
+  {
+    number_of_chains += 2;
+  }
+  kdl_chains_.resize(number_of_chains);
+  jacobian_coords_.resize(number_of_chains); // location to place the subjacobians into the large jacobian
+
+  int chain_id = 0; // track what chain we are on
+  for (std::size_t i = 0; i < tip_frames_.size(); ++i)
   {
     // One chain per tip
-    if (!kdl_tree.getChain(CHEST_LINK, tip_frames_[i], kdl_chains_[i]))
+    if (!kdl_tree.getChain(CHEST_LINK, tip_frames_[i], kdl_chains_[chain_id]))
     {
       ROS_ERROR_STREAM_NAMED("kdl","Could not initialize chain object from " << CHEST_LINK << " to " << tip_frames_[i]);
       return false;
-    }    
+    }
+    ++chain_id;
 
+    // Debug
     if (verbose_)
       ROS_INFO_STREAM_NAMED("kdl","Created chain object from " << CHEST_LINK << " to " << tip_frames_[i] 
-        << " with " << kdl_chains_[i].getNrOfJoints() << " joints");
+        << " with " << kdl_chains_[chain_id].getNrOfJoints() << " joints");
+
+    // Check if we also need to include the torso jacobian
+    if (!include_torso)
+      continue;
+
+    if (!kdl_tree.getChain(BASE_LINK, tip_frames_[i], kdl_chains_[chain_id]))
+    {
+      ROS_ERROR_STREAM_NAMED("kdl","Could not initialize chain object from " << BASE_LINK << " to " << tip_frames_[i]);
+      return false;
+    }
+    ++chain_id;
+
+    // Debug
+    if (verbose_)
+      ROS_INFO_STREAM_NAMED("kdl","Created chain object from " << BASE_LINK << " to " << tip_frames_[i] 
+        << " with " << kdl_chains_[chain_id].getNrOfJoints() << " joints");
   }
-  // TODO: account for torso that is shared
+
+  // TODO: make this not hard-coded
+  int size_rows = 6;
+  int size_arm_cols = 7; // todo not hard code
+  int size_torso_cols = 2; // todo not hard code
+  if (include_torso)
+  {
+    // 0 = arm 1
+    jacobian_coords_.push_back( MatrixCoords( 0, size_torso_cols ) ); // top, second
+    // 0 = arm 1 torso
+    jacobian_coords_.push_back( MatrixCoords( 0, 0 ) ); // top, first
+    // 1 = arm 2
+    jacobian_coords_.push_back( MatrixCoords( size_rows, size_torso_cols + size_arm_cols ) ); // bottom, third
+    // 1 = arm 2 torso
+    jacobian_coords_.push_back( MatrixCoords( size_rows, 0 ) ); // bottom, first
+  }
+  else
+  {
+    ROS_ERROR_STREAM_NAMED("temp","TODO");
+    exit(-1);
+  }
 
   // Get the num of dimensions
   ROS_INFO_STREAM_NAMED("temp","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
@@ -287,15 +333,12 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   //KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, joint_min_, joint_max_, weights, eps, maxiter, alpha, verbose_);
-  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, kdl_chains_, joint_min_, joint_max_, 
-      weights, eps, maxiter, alpha, verbose_));
+  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_, 
+      weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
 
-  // Create fk solvers for each chain
-  for (std::size_t chain_id = 0; chain_id < kdl_chains_.size(); ++chain_id)
-  {
-    boost::shared_ptr<KDL::ChainFkSolverPos> temp (new KDL::ChainFkSolverPos_recursive(kdl_chains_[chain_id]));
-    fk_solvers_.push_back(temp);
-  }
+  // Load the jacobian generator
+  jacobian_generator_.reset(new JacobianGenerator(kdl_chains_, jacobian_coords_, dimension_, verbose_));
+
 
   ROS_DEBUG_NAMED("kdl","KDL solver initialized");
   return true;
@@ -519,7 +562,6 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
   bool debug_would_have_stopped = false; // used for testing if we stopped to soon
   bool basic_debugging = false;
-  bool use_robot_state = true; // TODO choose one
 
   // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
@@ -529,7 +571,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   {
 
     if (verbose_)
-      ROS_WARN_STREAM_NAMED("cartesionToJoint","Starting solver iteration " << solver_iteration << " of " << max_solver_iterations_ << " =====================");
+      ROS_WARN_STREAM_NAMED("cartesionToJoint","Starting solver iteration " << solver_iteration << " of " << max_solver_iterations_ << " =================");
 
     if (!ros::ok())
     {
@@ -539,8 +581,6 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     all_poses_valid = true;
 
-    if (use_robot_state)
-    {
       // Convert to vector of doubles
       for (std::size_t i = 0; i < q_out.rows(); ++i)
         ctj_data_->current_joint_values_[i] = q_out(i);
@@ -560,43 +600,10 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         visual_tools_->publishRobotState(robot_state_);
         ros::Duration(0.15).sleep();
       }
-    }
 
     // For each end effector
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
     {
-      if (!use_robot_state)
-      {
-        /*/ Error check my hack
-          if (dimension_of_subgroup != kdl_chains_[pose_id].getNrOfJoints())
-          {
-          std::cout << "Hack is bad, chain size assumption does not hold " << std::endl;
-          exit(-1);
-          }*/
-
-        // Convert q_out to its subgroup
-        ROS_ERROR_STREAM_NAMED("temp","This is currently backwards - need to map groups in reverse");
-        for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
-        {
-          q_out_subgroup(i) = q_out(i + pose_id * dimension_of_subgroup);
-          if (verbose_)
-            std::cout << "q_out_subgroup(" <<  i << ") = " << q_out(i + pose_id * dimension_of_subgroup) << std::endl;
-        }
-
-        // Forward kinematics from current guess to new frame
-        fk_solvers_[pose_id]->JntToCart(q_out_subgroup, ctj_data_->current_pose_);
-
-        // Convert subgroup to q_out
-        for (std::size_t i = 0; i < dimension_of_subgroup; ++i)
-        {
-          q_out(i + pose_id * dimension_of_subgroup) = q_out_subgroup(i);
-          if (verbose_)
-            std::cout << "q_out(" <<  (i + pose_id * dimension_of_subgroup) << ") = " << q_out_subgroup(i) << std::endl;
-        }
-      }
-      else
-      {
-
         // Do forward kinematics to get new EE pose location
         Eigen::Affine3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
 
@@ -605,7 +612,6 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
         // Convert Eigen::Affine3d to KDL::Frame
         poseEigenToKDL(eef_pose, ctj_data_->current_pose_);
-      }
 
       // Calculate the difference between our desired pose and current pose
       ctj_data_->delta_twist_ = diff(ctj_data_->current_pose_, kdl_poses[pose_id]);   // v_in = actual - target
@@ -656,9 +662,13 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       return 0;
     }
 
+    //Let the ChainJntToJacSolver calculate the jacobian "jac" for
+    //the current joint positions "q_in"
+    jacobian_generator_->JntToJac(q_out, ctj_data_->jacobian_);
+
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel_->CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->qdot_);
+    ik_solver_vel_->CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_);
 
 
     // See velocities

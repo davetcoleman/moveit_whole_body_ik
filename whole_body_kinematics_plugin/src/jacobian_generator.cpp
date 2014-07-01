@@ -19,35 +19,36 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-#include <moveit/whole_body_kinematics_plugin/kdl/jnt_to_jac_solver.hpp>
+#include <moveit/whole_body_kinematics_plugin/jacobian_generator.h>
 
 #include <iostream> 
 
-namespace KDL
+namespace whole_body_kinematics_plugin
 {
-JntToJacSolver::JntToJacSolver(const std::vector<Chain>& _chains, int _num_joints, bool _verbose):
-  chains(_chains),locked_joints_(_num_joints,false),
+
+JacobianGenerator::JacobianGenerator(const std::vector<KDL::Chain>& chains, const std::vector<MatrixCoords>& jacobian_coords, int _num_joints, bool _verbose):
+  chains_(chains),
+  jacobian_coords_(jacobian_coords),
+  locked_joints_(_num_joints,false),
   nr_of_unlocked_joints_(_num_joints),
   verbose(_verbose)
 {
   // For each kinematic chain
-  for (std::size_t i = 0; i < chains.size(); ++i)
+  for (std::size_t i = 0; i < chains_.size(); ++i)
   {
     // Allocate sub jacobians 
-    sub_jacobians.push_back(Jacobian2dPtr(new Jacobian2d(chains[i].getNrOfJoints(), 6)));
+    sub_jacobians.push_back(KDL::Jacobian2dPtr(new KDL::Jacobian2d(chains_[i].getNrOfJoints(), 6)));
 
     // Allocate sub joint arrays
-    sub_q_ins.push_back(JntArrayPtr(new JntArray(chains[i].getNrOfJoints())));
+    sub_q_ins.push_back(KDL::JntArrayPtr(new KDL::JntArray(chains_[i].getNrOfJoints())));
   }
-
-
 }
 
-JntToJacSolver::~JntToJacSolver()
+JacobianGenerator::~JacobianGenerator()
 {
 }
 
-int JntToJacSolver::setLockedJoints(const std::vector<bool> locked_joints)
+int JacobianGenerator::setLockedJoints(const std::vector<bool> locked_joints)
 {
   if(locked_joints.size()!=locked_joints_.size())
     return -1;
@@ -61,11 +62,11 @@ int JntToJacSolver::setLockedJoints(const std::vector<bool> locked_joints)
   return 0;
 }
 
-int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
+int JacobianGenerator::JntToJac(const KDL::JntArray& q_in, KDL::Jacobian2d& jac, int seg_nr)
 {
   if (verbose)
   {
-    std::cout << "\n\n> Starting JntToJac with "<< chains.size() << " chains and input joint array of size "
+    std::cout << "\n\n> Starting JntToJac with "<< chains_.size() << " chains and input joint array of size "
               << q_in.rows() << " rows by " << q_in.columns() << " columns ------------------------ " << std::endl;
   }
 
@@ -79,18 +80,18 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
   int jac_output_row = 0; // track where to place the output jacobian
   int jac_output_col = 0; // track where to place the output jacobian
 
-  const Chain *this_chain;
+  const KDL::Chain *this_chain;
 
   if (verbose)
-    std::cout << "\nWe have " << chains.size() << " chains" << std::endl;
+    std::cout << "\nWe have " << chains_.size() << " chains" << std::endl;
 
-  for (std::size_t chain_id = 0; chain_id < chains.size(); ++chain_id)
+  for (std::size_t chain_id = 0; chain_id < chains_.size(); ++chain_id)
   {
     if (verbose)
       std::cout << std::endl << "Processing chain " << chain_id << " ----------------------------" << std::endl;
 
     // Get a pointer to the current chain
-    this_chain = &chains[chain_id];
+    this_chain = &chains_[chain_id];
 
     SetToZero(*sub_jacobians[chain_id].get());
 
@@ -166,14 +167,14 @@ int JntToJacSolver::JntToJac(const JntArray& q_in, Jacobian2d& jac, int seg_nr)
     std::cout << "FINISHED CALCULTING JACOBIAN -------------------------- " << std::endl << std::endl;
 }
 
-int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const int seg_nr, const int chain_id)
+int JacobianGenerator::JntToJacSingle(const KDL::JntArray& q_in, KDL::Jacobian2d& jac, const int seg_nr, const int chain_id)
 {
   if (verbose)
     std::cout << "JntToJacSingle for chain # "  << chain_id << std::endl;
 
   // Optionally do not proccess whole chain
   if(seg_nr<0) // default value
-    segmentNr = chains[chain_id].getNrOfSegments(); // process the entire chain
+    segmentNr = chains_[chain_id].getNrOfSegments(); // process the entire chain
   else
     segmentNr = seg_nr; // stop early
 
@@ -181,10 +182,10 @@ int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const 
   SetToZero(jac) ;
 
   // Error check
-  if (q_in.rows() != chains[chain_id].getNrOfJoints())
+  if (q_in.rows() != chains_[chain_id].getNrOfJoints())
   {
     std::cout << "Number of rows " << q_in.rows() << " does not equal number of joints in chain "
-              << chains[chain_id].getNrOfJoints() << std::endl;
+              << chains_[chain_id].getNrOfJoints() << std::endl;
     return -1;
   }
   /*
@@ -196,14 +197,14 @@ int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const 
     return -1;
   }
   */
-  else if (segmentNr > chains[chain_id].getNrOfSegments())
+  else if (segmentNr > chains_[chain_id].getNrOfSegments())
   {
     std::cout << "Segment number is greater than the number of segments " << segmentNr << std::endl;
     return -1;
   }
 
   // Reset the frame
-  T_frame_tmp = Frame::Identity();
+  T_frame_tmp = KDL::Frame::Identity();
 
   // Reset the twist
   SetToZero(t_twist_tmp);
@@ -215,28 +216,28 @@ int JntToJacSolver::JntToJacSingle(const JntArray& q_in, Jacobian2d& jac, const 
   for (unsigned int i=0; i < segmentNr; i++)
   {
     //Calculate new Frame_base_ee
-    if (chains[chain_id].getSegment(i).getJoint().getType() != Joint::None) // is a regular joint
+    if (chains_[chain_id].getSegment(i).getJoint().getType() != KDL::Joint::None) // is a regular joint
     {
       //pose of the new end-point expressed in the base
-      total_frame = T_frame_tmp * chains[chain_id].getSegment(i).pose(q_in(j));
+      total_frame = T_frame_tmp * chains_[chain_id].getSegment(i).pose(q_in(j));
 
       //changing base of new segment's twist to base frame if it is not locked
       if(!locked_joints_[j])
       {
-        t_twist_tmp = T_frame_tmp.M * chains[chain_id].getSegment(i).twist( q_in(j), 1.0 );
+        t_twist_tmp = T_frame_tmp.M * chains_[chain_id].getSegment(i).twist( q_in(j), 1.0 );
       }
     }
     else
     {
       // Is a fixed joint, so skip it (just calculate transpose)
-      total_frame = T_frame_tmp * chains[chain_id].getSegment(i).pose(0.0);
+      total_frame = T_frame_tmp * chains_[chain_id].getSegment(i).pose(0.0);
     }
 
     //Changing Refpoint of all columns to new ee
     changeRefPoint(jac, total_frame.p - T_frame_tmp.p, jac);
 
     //Only increase jointnr if the segment has a joint
-    if(chains[chain_id].getSegment(i).getJoint().getType() != Joint::None)
+    if(chains_[chain_id].getSegment(i).getJoint().getType() != KDL::Joint::None)
     {
       //Only put the twist inside if it is not locked
       if(!locked_joints_[j])

@@ -25,12 +25,11 @@
 namespace KDL
 {
 
-IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const std::vector<Chain>& _chains, JntArray _joint_min, JntArray _joint_max,
-  JntArray _weights, double _eps, int _maxiter, double _alpha, bool _verbose):  
-  chains(_chains),
-  jnt2jac(chains, _num_joints, _verbose), // TODO num joints was 7, now its 14, is that ok?
+IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
+  JntArray _weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double _alpha, bool _verbose)
+  :
   // Load the jacobian to have #joint ROWS x #tips COLS
-  jacobian(_num_joints, _num_tips*6),
+  //  jacobian(_num_joints, _num_tips*6),
   svd(jacobian),
   U(_num_tips*6,JntArray(_num_joints)),
   S(_num_joints),
@@ -50,11 +49,6 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const
   // Debugging
   verbose(_verbose)
 {
-  //std::cout << "CREATED JACOBIAN WITH " << opt_pos.rows() << " columns and " << _num_tips * 6<< " rows " << std::endl;
-  //SetToZero(jacobian);
-  //jacobian.print();
-
-
   for (std::size_t i = 0; i < joint_min.rows(); ++i)
   {
     // Calculate midpoint of all joints
@@ -70,16 +64,8 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, const
  * \param xdot_in - the difference between desired pose and current pose
  * \param qdot_out - velocity (delta q) - change in joint values
  */
-int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, JntArray& qdot_out)
+int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out)
 {
-  /* Notes:
-     jacobian.rows() = num_tips * 6
-     jacobian.columns() = num_joint
-   */
-
-  //Let the ChainJntToJacSolver calculate the jacobian "jac" for
-  //the current joint positions "q_in"
-  jnt2jac.JntToJac(q_in,jacobian);
 
   if (verbose && false)
   {

@@ -61,12 +61,12 @@ public:
    * @param alpha the null-space velocity gain
    *
    */
-  IkSolverVel_pinv_nso(int num_tips, int num_joints, const std::vector<Chain>& chains, JntArray joint_min, JntArray joint_max, JntArray weights, 
+  IkSolverVel_pinv_nso(int num_tips, int num_joints, JntArray joint_min, JntArray joint_max, JntArray weights, const Jacobian2d& jacobian,
     double eps=0.00001,int maxiter=150, double alpha = 0.25, bool verbose = false);
 
   ~IkSolverVel_pinv_nso() {};
 
-  virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, JntArray& qdot_out);
+  virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out);
   /**
    *Set joint weights for optimization criterion
    *
@@ -84,9 +84,7 @@ public:
   virtual int setAlpha(const double alpha);
 
 private:
-  const std::vector<Chain> chains;
-  JntToJacSolver jnt2jac;
-  Jacobian2d jacobian;
+  //  Jacobian2d jacobian;
   SVD_HH svd;
   std::vector<JntArray> U;
   JntArray S;
