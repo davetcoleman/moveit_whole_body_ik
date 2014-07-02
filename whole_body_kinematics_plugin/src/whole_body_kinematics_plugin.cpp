@@ -60,7 +60,7 @@ namespace whole_body_kinematics_plugin
 {
 
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
-  : verbose_(false)
+  : verbose_(true)
 {}
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
@@ -119,7 +119,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   if (!urdf_model || !srdf)
   {
-    ROS_ERROR_NAMED("kdl","URDF and SRDF must be loaded for KDL kinematics solver to work.");
+    ROS_ERROR_NAMED("whole_body_ik","URDF and SRDF must be loaded for KDL kinematics solver to work.");
     return false;
   }
   robot_model_.reset(new robot_model::RobotModel(urdf_model, srdf));
@@ -131,12 +131,12 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   if(joint_model_group_->isChain())
   {
-    ROS_ERROR_NAMED("kdl","Group '%s' is a chain, which this plugin might not support. I've only tested it with non-chains", group_name.c_str());
+    ROS_ERROR_NAMED("whole_body_ik","Group '%s' is a chain, which this plugin might not support. I've only tested it with non-chains", group_name.c_str());
     return false;
   }
   if(!joint_model_group_->isSingleDOFJoints())
   {
-    ROS_ERROR_NAMED("kdl","Group '%s' includes joints that have more than 1 DOF", group_name.c_str());
+    ROS_ERROR_NAMED("whole_body_ik","Group '%s' includes joints that have more than 1 DOF", group_name.c_str());
     return false;
   }
 
@@ -152,7 +152,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // Random number generator
   if (true)
   {
-    ROS_WARN_STREAM_NAMED("kdl","Using stochastic random joint selection");
+    ROS_WARN_STREAM_NAMED("whole_body_ik","Using stochastic random joint selection");
     rng_ = new random_numbers::RandomNumberGenerator(27349872); // stoachastic behavior
   }
   else
@@ -191,7 +191,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     }
     else
     {
-      ROS_ERROR_STREAM_NAMED("kdl","This is the Whole Body kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints");
+      ROS_ERROR_STREAM_NAMED("whole_body_ik","This is the Whole Body kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints");
     }
   }
 
@@ -227,7 +227,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // Get Solver Parameters from param server
   private_handle.param("max_solver_iterations", max_solver_iterations_, 500);
   private_handle.param("epsilon", epsilon_, 1e-5);
-  ROS_DEBUG_NAMED("kdl","Looking in private handle: %s for param name: %s",
+  ROS_DEBUG_NAMED("whole_body_ik","Looking in private handle: %s for param name: %s",
     private_handle.getNamespace().c_str(), (group_name+"/position_only_ik").c_str());
 
   // Setup the joint state groups that we need
@@ -260,14 +260,14 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
-  if (!jacobian_generator_->initialize(urdf_model, robot_model_, tip_frames_))
+  if (!jacobian_generator_->initialize(urdf_model, robot_model_, tip_frames_, joint_model_group_))
   {
-    ROS_ERROR_STREAM_NAMED("kdl","Failed to convert URDF to KDL Chains and setup jacobians");
+    ROS_ERROR_STREAM_NAMED("whole_body_ik","Failed to convert URDF to KDL Chains and setup jacobians");
     return false;
   }
 
 
-  ROS_DEBUG_NAMED("kdl","KDL solver initialized");
+  ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
   return true;
 }
 
@@ -331,7 +331,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // Check consistency limits
   if(!consistency_limits.empty() && consistency_limits.size() != dimension_)
   {
-    ROS_ERROR_STREAM_NAMED("kdl","Consistency limits be empty or must have size " << dimension_ << " instead of size " << consistency_limits.size());
+    ROS_ERROR_STREAM_NAMED("whole_body_ik","Consistency limits be empty or must have size " << dimension_ << " instead of size " << consistency_limits.size());
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
   }
@@ -388,13 +388,13 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   unsigned int counter(0);
   while(true)
   {
-    ROS_DEBUG_NAMED("kdl","Outer most iteration: %d, time: %f, Timeout: %f",counter,(ros::WallTime::now()-n1).toSec(),timeout);
+    ROS_DEBUG_NAMED("whole_body_ik","Outer most iteration: %d, time: %f, Timeout: %f",counter,(ros::WallTime::now()-n1).toSec(),timeout);
     counter++;
 
     // Check if timed out
     if(timedOut(n1,timeout))
     {
-      ROS_DEBUG_NAMED("kdl","IK timed out");
+      ROS_DEBUG_NAMED("whole_body_ik","IK timed out");
       error_code.val = error_code.TIMED_OUT;
       return false;
     }
@@ -414,9 +414,9 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       }
       if (verbose_)
       {
-        ROS_DEBUG_NAMED("kdl","New random configuration");
+        ROS_DEBUG_NAMED("whole_body_ik","New random configuration");
         for(unsigned int j=0; j < dimension_; j++)
-          ROS_DEBUG_NAMED("kdl","%d %f", j, jnt_pos_in(j));
+          ROS_DEBUG_NAMED("whole_body_ik","%d %f", j, jnt_pos_in(j));
       }
     }
 
@@ -428,13 +428,13 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       ( (ik_valid < 0 && !options.return_approximate_solution) || !checkConsistency(jnt_seed_state, consistency_limits, jnt_pos_out)) )
     {
       if (verbose_)
-        ROS_DEBUG_NAMED("kdl","Could not find IK solution: does not match consistency limits");
+        ROS_DEBUG_NAMED("whole_body_ik","Could not find IK solution: does not match consistency limits");
       continue;
     }
     else if(ik_valid < 0 && !options.return_approximate_solution)
     {
       if (verbose_)
-        ROS_DEBUG_NAMED("kdl","Could not find IK solution");
+        ROS_DEBUG_NAMED("whole_body_ik","Could not find IK solution");
       continue;
     }
 
@@ -456,7 +456,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     {
       static int total_iterations = 0;
       total_iterations += counter;
-      ROS_DEBUG_STREAM_NAMED("kdl","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
+      ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
 
       visual_tools_->publishRobotState(robot_state_);
 
@@ -599,7 +599,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     //Calculate the jacobian "jac" the current joint positions in robot_state
     if( !jacobian_generator_->generateJacobian(robot_state_, ctj_data_->jacobian_) )
     {
-      ROS_ERROR_STREAM_NAMED("kdl","Failed to generate jacobian");
+      ROS_ERROR_STREAM_NAMED("whole_body_ik","Failed to generate jacobian");
       return -3;
     }
 
@@ -693,7 +693,7 @@ bool WholeBodyKinematicsPlugin::getPositionFK(const std::vector<std::string> &li
     poses.resize(link_names.size());
     if(joint_angles.size() != dimension_)
     {
-    ROS_ERROR_NAMED("kdl","Joint angles vector must have size: %d",dimension_);
+    ROS_ERROR_NAMED("whole_body_ik","Joint angles vector must have size: %d",dimension_);
     return false;
     }
 

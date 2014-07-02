@@ -1,23 +1,40 @@
-// Copyright  (C)  2007  Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
+/*********************************************************************
+ * Software License Agreement (BSD License)
+ *
+ *  Copyright (c) 2014, JSK, The University of Tokyo.
+ *  All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted provided that the following conditions
+ *  are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the following
+ *     disclaimer in the documentation and/or other materials provided
+ *     with the distribution.
+ *   * Neither the name of the JSK, The University of Tokyo nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ *********************************************************************/
 
-// Version: 1.0
-// Author: Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
-// Maintainer: Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
-// URL: http://www.orocos.org/kdl
-
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+/* Author: Dave Coleman
+   Desc:   Creates a jacobian for non-chain robot kinematics
+*/
 
 #ifndef MOVEIT_WHOLE_BODY_IK__JACOBIAN_GENERATOR_H
 #define MOVEIT_WHOLE_BODY_IK__JACOBIAN_GENERATOR_H
@@ -56,6 +73,36 @@ typedef std::vector<bool> LockedJoints; // disable joints in a kin chain
 
 static const int NUM_DIM_EE = 6; // end effector pose dimensions
 
+// Sub components of our overall jacobian
+struct IKChainGroup
+{
+  IKChainGroup (const robot_model::JointModelGroup* jmg)
+    : jmg_(jmg),
+      locked_joints_(jmg->getJointModels().size(), false),
+      num_unlocked_joints_(jmg->getJointModels().size())
+  {}
+  // Mapping from subjacobians to their location in the combined jacobian
+  MatrixCoords jacobian_coords_;  // row, col
+
+  // All the chains that are combined to make a jacobian
+  KDL::Chain kdl_chain_;
+
+  // Mapping from subjacobians to their planning groups
+  const robot_model::JointModelGroup* jmg_; //jacobian_groups_;
+
+  // Track which joints are locked
+  LockedJoints locked_joints_;
+
+  // Track how many unlocked joints per chain
+  int num_unlocked_joints_;
+
+  // Store allocated memory for every chainsub_jacobians
+  KDL::Jacobian2dPtr sub_jacobian_;
+
+  // Sub joint index for every chain
+  KDL::JntArrayPtr sub_q_in_;
+};
+
 /**
  * @brief  Class to calculate the jacobian of a set of KDL::Chains
  */
@@ -78,8 +125,8 @@ public:
    * \param tip_frames
    * \return true on success
    */
-  bool initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model, 
-    const std::vector<std::string>& tip_frames);
+  bool initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
+    const std::vector<std::string>& tip_frames, const robot_model::JointModelGroup *jmg);
 
   /**
    * Calculate the jacobian expressed in the base frame of the
@@ -100,6 +147,12 @@ public:
   bool generateChainJacobian(const KDL::JntArray& q_in, KDL::Jacobian2d& jacobian, const int seg_nr, const int chain_id);
 
   //  int setLockedJoints(const std::vector<bool> locked_joints);
+
+  bool linksToJointGroup( std::vector<const robot_model::JointModelGroup*> subgroups,
+    const robot_model::LinkModel* from, const robot_model::LinkModel* to, const robot_model::JointModelGroup* &found_group);
+
+  void lockJointsAfter(IKChainGroup &ik_group, int lock_after_id);
+
 private:
 
   KDL::Twist t_twist_tmp_; // base of new segment's twist
@@ -109,6 +162,7 @@ private:
   unsigned int nr_of_unlocked_joints_;
   bool verbose_;
 
+  /*
   // All the chains that are combined to make a jacobian
   std::vector<KDL::Chain> chains_;
 
@@ -129,9 +183,13 @@ private:
 
   // Sub joint index for every chain
   std::vector<KDL::JntArrayPtr> sub_q_ins;
+  */
 
   // Used in generateChainJacobian
   unsigned int segment_nr_;
+
+  // Store all sub jacobian data
+  std::vector<IKChainGroup> chains_;
 
 };
 
