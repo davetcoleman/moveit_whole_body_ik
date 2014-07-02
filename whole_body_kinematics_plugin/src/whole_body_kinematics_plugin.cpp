@@ -145,7 +145,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   {
     std::cout << std::endl << "Joint Model Variable Names: ------------------------------------------- " << std::endl;
     const std::vector<std::string> jm_names = joint_model_group_->getVariableNames();
-    //    std::copy(jm_names.begin(), jm_names.end(), std::ostream_iterator<doublea>(std::cout, "\n"));
+    std::copy(jm_names.begin(), jm_names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
     std::cout << std::endl;
   }
 
@@ -170,83 +170,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     std::cout << "Used to Expect: ----------------" << std::endl;
     std::cout << " - LARM_LINK6 " << std::endl;
     std::cout << " - RARM_LINK6 " << std::endl;
-  }
-
-  // Convert to KDL Tree
-  KDL::Tree kdl_tree;
-
-  if (!kdl_parser::treeFromUrdfModel(*urdf_model, kdl_tree))
-  {
-    ROS_ERROR_NAMED("kdl","Could not initialize tree object");
-    return false;
-  }
-
-  // Convert to multiple KDL chains
-  static const std::string BASE_LINK  = "BODY";
-  static const std::string CHEST_LINK  = "CHEST_LINK1";
-  
-  int number_of_chains = tip_frames_.size();
-
-  bool include_torso = true;
-  if (include_torso)
-  {
-    number_of_chains += 2;
-  }
-  kdl_chains_.resize(number_of_chains);
-  jacobian_coords_.resize(number_of_chains); // location to place the subjacobians into the large jacobian
-
-  int chain_id = 0; // track what chain we are on
-  for (std::size_t i = 0; i < tip_frames_.size(); ++i)
-  {
-    // One chain per tip
-    if (!kdl_tree.getChain(CHEST_LINK, tip_frames_[i], kdl_chains_[chain_id]))
-    {
-      ROS_ERROR_STREAM_NAMED("kdl","Could not initialize chain object from " << CHEST_LINK << " to " << tip_frames_[i]);
-      return false;
-    }
-    ++chain_id;
-
-    // Debug
-    if (verbose_)
-      ROS_INFO_STREAM_NAMED("kdl","Created chain object from " << CHEST_LINK << " to " << tip_frames_[i] 
-        << " with " << kdl_chains_[chain_id].getNrOfJoints() << " joints");
-
-    // Check if we also need to include the torso jacobian
-    if (!include_torso)
-      continue;
-
-    if (!kdl_tree.getChain(BASE_LINK, tip_frames_[i], kdl_chains_[chain_id]))
-    {
-      ROS_ERROR_STREAM_NAMED("kdl","Could not initialize chain object from " << BASE_LINK << " to " << tip_frames_[i]);
-      return false;
-    }
-    ++chain_id;
-
-    // Debug
-    if (verbose_)
-      ROS_INFO_STREAM_NAMED("kdl","Created chain object from " << BASE_LINK << " to " << tip_frames_[i] 
-        << " with " << kdl_chains_[chain_id].getNrOfJoints() << " joints");
-  }
-
-  // TODO: make this not hard-coded
-  int size_rows = 6;
-  int size_arm_cols = 7; // todo not hard code
-  int size_torso_cols = 2; // todo not hard code
-  if (include_torso)
-  {
-    // 0 = arm 1
-    jacobian_coords_.push_back( MatrixCoords( 0, size_torso_cols ) ); // top, second
-    // 0 = arm 1 torso
-    jacobian_coords_.push_back( MatrixCoords( 0, 0 ) ); // top, first
-    // 1 = arm 2
-    jacobian_coords_.push_back( MatrixCoords( size_rows, size_torso_cols + size_arm_cols ) ); // bottom, third
-    // 1 = arm 2 torso
-    jacobian_coords_.push_back( MatrixCoords( size_rows, 0 ) ); // bottom, first
-  }
-  else
-  {
-    ROS_ERROR_STREAM_NAMED("temp","TODO");
-    exit(-1);
   }
 
   // Get the num of dimensions
@@ -332,12 +255,16 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   double alpha = 0.25;
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
-  //KDL::IkSolverVel_pinv_nso ik_solver_vel(ik_poses.size(), dimension_, kdl_chains_, joint_min_, joint_max_, weights, eps, maxiter, alpha, verbose_);
   ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_, 
       weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
 
   // Load the jacobian generator
-  jacobian_generator_.reset(new JacobianGenerator(kdl_chains_, jacobian_coords_, dimension_, verbose_));
+  jacobian_generator_.reset(new JacobianGenerator(verbose_));
+  if (!jacobian_generator_->initialize(urdf_model, robot_model_, tip_frames_))
+  {
+    ROS_ERROR_STREAM_NAMED("kdl","Failed to convert URDF to KDL Chains and setup jacobians");
+    return false;
+  }
 
 
   ROS_DEBUG_NAMED("kdl","KDL solver initialized");
@@ -530,8 +457,12 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       static int total_iterations = 0;
       total_iterations += counter;
       ROS_DEBUG_STREAM_NAMED("kdl","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
+
+      visual_tools_->publishRobotState(robot_state_);
+
       return true;
     }
+
   }
   // should never get here
 }
@@ -561,7 +492,6 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
   bool debug_would_have_stopped = false; // used for testing if we stopped to soon
-  bool basic_debugging = false;
 
   // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
@@ -587,14 +517,18 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
       if (verbose_)
       {
-        std::cout << "Current joint values: " ;
-        std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, ", "));
+        std::cout << "Curr JValues: " ;
+        //std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, ", "));
+        for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+        {
+          std::cout << boost::format("%10.4f") % ctj_data_->current_joint_values_[i];          
+        }
         std::cout << std::endl;
       }
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
-      if (basic_debugging) //verbose_ && solver_iteration % 10 == 0)
+      if (false && verbose_ && solver_iteration % 10 == 0)
       {
         // Publish
         visual_tools_->publishRobotState(robot_state_);
@@ -631,7 +565,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     // See twist delta
     if (verbose_)
     {
-      std::cout << "Twist: ";
+      std::cout << "Twist:   ";
       for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
       {
         std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(i);
@@ -662,9 +596,12 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       return 0;
     }
 
-    //Let the ChainJntToJacSolver calculate the jacobian "jac" for
-    //the current joint positions "q_in"
-    jacobian_generator_->JntToJac(q_out, ctj_data_->jacobian_);
+    //Calculate the jacobian "jac" the current joint positions in robot_state
+    if( !jacobian_generator_->generateJacobian(robot_state_, ctj_data_->jacobian_) )
+    {
+      ROS_ERROR_STREAM_NAMED("kdl","Failed to generate jacobian");
+      return -3;
+    }
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
@@ -672,7 +609,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
 
     // See velocities
-    if (verbose_ || basic_debugging)
+    if (verbose_)
     {
       std::cout << "Qdot: ";
       for (std::size_t i = 0; i < q_out.rows(); ++i)
@@ -736,6 +673,10 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         q_out(j) = joint_max_(j);
       }
     }
+
+    // Loop
+    //ROS_INFO_STREAM_NAMED("temp","temp quit early");
+    //exit(-1);
   }
 
   // We never found a close enough solution

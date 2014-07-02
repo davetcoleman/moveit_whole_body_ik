@@ -24,7 +24,6 @@
 
 #include <stdlib.h>
 #include "utilities/svd_HH.hpp"
-#include "jnt_to_jac_solver.hpp"
 #include "jacobian.hpp"
 
 namespace KDL

@@ -22,11 +22,23 @@
 #ifndef MOVEIT_WHOLE_BODY_IK__JACOBIAN_GENERATOR_H
 #define MOVEIT_WHOLE_BODY_IK__JACOBIAN_GENERATOR_H
 
+// Custom KDL
 #include "kdl/frames.hpp"
 #include "kdl/jacobian.hpp"
 #include "kdl/jntarray.hpp"
 #include "kdl/chain.hpp"
+
+// Binary KDL
+#include <kdl/tree.hpp>
+#include <kdl_parser/kdl_parser.hpp>
+
+// System
 #include <boost/shared_ptr.hpp>
+
+// MoveIt
+#include <moveit/robot_state/robot_state.h>
+#include <moveit/robot_model/robot_model.h>
+#include <moveit/robot_model/robot_model.h>
 
 // Change text color on console output
 #define OMPL_CONSOLE_COLOR_RESET "\033[0m"
@@ -40,6 +52,9 @@ namespace whole_body_kinematics_plugin
 {
 
 typedef std::pair< std::size_t, std::size_t > MatrixCoords; //row, col
+typedef std::vector<bool> LockedJoints; // disable joints in a kin chain
+
+static const int NUM_DIM_EE = 6; // end effector pose dimensions
 
 /**
  * @brief  Class to calculate the jacobian of a set of KDL::Chains
@@ -47,8 +62,24 @@ typedef std::pair< std::size_t, std::size_t > MatrixCoords; //row, col
 class JacobianGenerator
 {
 public:
-  explicit JacobianGenerator(const std::vector<KDL::Chain>& chains, const std::vector<MatrixCoords>& jacobian_coords, int num_joints, bool verbose);
+  /**
+   * \brief Constructor
+   */
+  JacobianGenerator(bool verbose);
+
+  /**
+   * \brief Destructor
+   */
   virtual ~JacobianGenerator();
+
+  /**
+   * \brief Read a URDF and convert into structures for Jacobian generation
+   * \param urdf_model
+   * \param tip_frames
+   * \return true on success
+   */
+  bool initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model, 
+    const std::vector<std::string>& tip_frames);
 
   /**
    * Calculate the jacobian expressed in the base frame of the
@@ -61,38 +92,46 @@ public:
    *
    * @return always returns 0
    */
-  virtual int JntToJac(const KDL::JntArray& q_in, KDL::Jacobian2d& jac, int segmentNR=-1);
+  bool generateJacobian(const robot_state::RobotStatePtr state, KDL::Jacobian2d& jacobian, int seg_nr = -1);
 
   /**
    * \brief Find jacobian for single chain
    */
-  int JntToJacSingle(const KDL::JntArray& q_in, KDL::Jacobian2d& jac, const int seg_nr, const int chain_id);
+  bool generateChainJacobian(const KDL::JntArray& q_in, KDL::Jacobian2d& jacobian, const int seg_nr, const int chain_id);
 
-  int setLockedJoints(const std::vector<bool> locked_joints);
+  //  int setLockedJoints(const std::vector<bool> locked_joints);
 private:
 
-  KDL::Twist t_twist_tmp; // base of new segment's twist
-  KDL::Frame T_frame_tmp;
-  KDL::Frame total_frame;
+  KDL::Twist t_twist_tmp_; // base of new segment's twist
+  KDL::Frame T_frame_tmp_;
+  KDL::Frame total_frame_;
 
-  std::vector<bool> locked_joints_;
   unsigned int nr_of_unlocked_joints_;
-  bool verbose;
+  bool verbose_;
 
   // All the chains that are combined to make a jacobian
-  const std::vector<KDL::Chain> chains_;
+  std::vector<KDL::Chain> chains_;
 
   // Mapping from subjacobians to their location in the combined jacobian
-  const std::vector<MatrixCoords> jacobian_coords_;
+  std::vector<MatrixCoords> jacobian_coords_;
 
-  // Store allocated memory for every chain
-  std::vector<KDL::Jacobian2dPtr> sub_jacobians;
+  // Mapping from subjacobians to their planning groups
+  std::vector<robot_model::JointModelGroup*> jacobian_groups_;
+
+  // Track which joints are locked
+  std::vector<LockedJoints> jacobian_locked_joints_;
+
+  // Track how many unlocked joints per chain
+  std::vector<int> num_unlocked_joints_;
+
+  // Store allocated memory for every chainsub_jacobians
+  std::vector<KDL::Jacobian2dPtr> sub_jacobians_;
 
   // Sub joint index for every chain
   std::vector<KDL::JntArrayPtr> sub_q_ins;
 
-  // Used in JntToJacSingle
-  unsigned int segmentNr;
+  // Used in generateChainJacobian
+  unsigned int segment_nr_;
 
 };
 

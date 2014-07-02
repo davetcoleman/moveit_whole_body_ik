@@ -20,7 +20,9 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include <moveit/whole_body_kinematics_plugin/kdl/jacobian.hpp>
+
 #include <iostream> // TODO remove
+#include <boost/format.hpp>
 
 namespace KDL
 {
@@ -163,7 +165,11 @@ void Jacobian2d::print() const
     std::cout << "[";
     for (std::size_t j = 0; j < columns(); ++j)
     {
-      std::cout << data(i,j);
+      // Hide zeros
+      if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
+        std::cout << boost::format("%6s") % "-";
+      else
+        std::cout << boost::format("%6.3f") % data(i,j);
 
       if (j < columns() - 1)
         std::cout << ",";

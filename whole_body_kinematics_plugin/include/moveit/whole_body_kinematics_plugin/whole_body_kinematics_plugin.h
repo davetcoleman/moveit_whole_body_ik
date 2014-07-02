@@ -55,7 +55,6 @@
 // KDL
 #include "kdl/jacobian.hpp" // load this here so that it overrides the version from kdl_urdf_parser
 #include "kdl/ik_solver_vel_pinv_nso.hpp" // customized ik generalize pseudo inverse
-#include "kdl/chain.hpp"
 #include "kdl/frames.hpp"
 #include "kdl/jntarray.hpp"
 
@@ -355,10 +354,6 @@ private:
   moveit_msgs::KinematicSolverInfo ik_group_info_; /** Stores information for the inverse kinematics solver */
 
   moveit_msgs::KinematicSolverInfo fk_group_info_; /** Store information for the forward kinematics solver */
-
-  std::vector<KDL::Chain> kdl_chains_;
-
-  std::vector<MatrixCoords> jacobian_coords_;
 
   unsigned int dimension_; /** Dimension of the group */
 
