@@ -60,7 +60,7 @@ namespace whole_body_kinematics_plugin
 {
 
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
-  : verbose_(true)
+  : verbose_(false)
 {}
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
@@ -140,6 +140,12 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     return false;
   }
 
+  // Get the num of dimensions
+  ROS_INFO_STREAM_NAMED("temp","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
+    << joint_model_group_->getMimicJointModels().size() << " mimic joints");
+
+  dimension_ = joint_model_group_->getActiveJointModels().size();
+
   // Debug joints
   if (verbose_)
   {
@@ -171,12 +177,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     std::cout << " - LARM_LINK6 " << std::endl;
     std::cout << " - RARM_LINK6 " << std::endl;
   }
-
-  // Get the num of dimensions
-  ROS_INFO_STREAM_NAMED("temp","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
-    << joint_model_group_->getMimicJointModels().size() << " mimic joints");
-
-  dimension_ = joint_model_group_->getActiveJointModels().size();
 
   // Copy joint names and limits
   for (std::size_t i=0; i < joint_model_group_->getJointModels().size(); ++i)
@@ -227,8 +227,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // Get Solver Parameters from param server
   private_handle.param("max_solver_iterations", max_solver_iterations_, 500);
   private_handle.param("epsilon", epsilon_, 1e-5);
-  ROS_DEBUG_NAMED("whole_body_ik","Looking in private handle: %s for param name: %s",
-    private_handle.getNamespace().c_str(), (group_name+"/position_only_ik").c_str());
 
   // Setup the joint state groups that we need
   robot_state_.reset(new robot_state::RobotState(robot_model_));
@@ -254,10 +252,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // alpha the null-space velocity gain
   double alpha = 0.25;
 
-  // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
-  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_, 
-      weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
-
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
   if (!jacobian_generator_->initialize(urdf_model, robot_model_, tip_frames_, joint_model_group_))
@@ -266,6 +260,9 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     return false;
   }
 
+  // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
+  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_, 
+      weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
 
   ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
   return true;
@@ -458,7 +455,11 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       total_iterations += counter;
       ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
 
-      visual_tools_->publishRobotState(robot_state_);
+      if (verbose_)
+      {
+        visual_tools_->publishRobotState(robot_state_);
+        ros::Duration(0.5).sleep();
+      }
 
       return true;
     }
@@ -528,7 +529,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
-      if (false && verbose_ && solver_iteration % 10 == 0)
+      if (true || false && verbose_ && solver_iteration % 10 == 0)
       {
         // Publish
         visual_tools_->publishRobotState(robot_state_);

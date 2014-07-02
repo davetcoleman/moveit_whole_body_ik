@@ -116,6 +116,8 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
 
   std::vector<const robot_model::JointModelGroup*> tip_to_jmg(tip_frames.size());
 
+  int expected_dimensions = 0; // book keeping for error checking
+
   // Find a MoveIt! planning group for each tip frame
   for (std::size_t tip_id = 0; tip_id < tip_frames.size(); ++tip_id)
   {
@@ -129,6 +131,15 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
       ROS_ERROR_STREAM_NAMED("jacobian_generator","Unable to find joint model group corresponding to tip " << tip_frames[tip_id]);
       return false;
     }
+    else
+    {
+      if (verbose_)
+        std::cout << " --> Found joint model group: " << tip_to_jmg[tip_id]->getName() 
+                  << " of size " << tip_to_jmg[tip_id]->getActiveJointModels().size() << std::endl;
+    }
+
+    // Make sure at the end we have the expected number of joints
+    expected_dimensions += tip_to_jmg[tip_id]->getActiveJointModels().size();
 
   } // for each tip
 
@@ -187,7 +198,8 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
         }
 
         // Create the overlapping torso groups
-        int num_shared_joints = joint_id + 1;
+        int num_shared_joints = joint_id;
+        expected_dimensions -= num_shared_joints; // book keeping
 
         // ASSUMPTION: shared joints are first in the input overall joint model group. 
         // Check this and throw error if not (TODO?)
@@ -250,17 +262,17 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
         for (std::size_t group_id = 0; group_id < 2; ++group_id)
         {
           // Choose which group of the two
-          const robot_model::JointModelGroup *current_group = group_id == 0 ? this_group : that_group;
+          const robot_model::JointModelGroup *outer_group = group_id == 0 ? this_group : that_group;
 
           // Get its new base
-          const robot_model::LinkModel *new_base = current_group->getJointModels()[joint_id]->getParentLinkModel();
+          const robot_model::LinkModel *new_base = outer_group->getJointModels()[joint_id]->getParentLinkModel();
 
           // Find the joint model group that has the same base->tip links
           const robot_model::JointModelGroup* new_group;
-          if (!linksToJointGroup(subgroups, new_base, current_group->getLinkModels().back(), new_group))
+          if (!linksToJointGroup(subgroups, new_base, outer_group->getLinkModels().back(), new_group))
           {
             ROS_ERROR_STREAM_NAMED("jacobian_generator","Unable to find planning group from links " << new_base->getName() 
-              << " to " << current_group->getLinkModels().back()->getName());
+              << " to " << outer_group->getLinkModels().back()->getName());
             return false;
           }
 
@@ -277,7 +289,7 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
           
           // Move to next location
           full_jac_row_location += NUM_DIM_EE;
-          full_jac_col_location += current_group->getJointModels().size();
+          full_jac_col_location += new_group->getJointModels().size();
 
           // This new_group is a pure, regular kinematic chain (no shared joints)
           ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
@@ -324,6 +336,16 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
     std::cout << "Chain " << i << ": " << chains_[i].jmg_->getName() << std::endl;
   }
   std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
+
+  // Error check that our joint model group has the same number of active joints as we expect
+  if (jmg->getActiveJointModels().size() != expected_dimensions)
+  {
+    ROS_ERROR_STREAM_NAMED("jacobian_generator","The main joint model group does not have the same number of active joints as our sub groups in total.");
+    ROS_ERROR_STREAM_NAMED("jacobian_generator","Main JM joints: " << jmg->getActiveJointModels().size() << " Expected: " << expected_dimensions);
+    return false;
+  }
+  else if( verbose_ )
+    ROS_DEBUG_STREAM_NAMED("jacobian_generator","Main JM joints: " << jmg->getActiveJointModels().size() << " Expected: " << expected_dimensions);
 
   // Fill in rest of info ---------------------------------------------------------------------
 
@@ -376,7 +398,7 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
   for (std::size_t chain_id = 0; chain_id < chains_.size(); ++chain_id)
   {
     if (verbose_)
-      std::cout << std::endl << "Processing chain " << chain_id << " ----------------------------" << std::endl;
+      std::cout << std::endl << "Processing chain " << chain_id << " - " << chains_[chain_id].jmg_->getName() << " ----------------------" << std::endl;
 
     // Get a pointer to the current chain
     this_chain = &chains_[chain_id].kdl_chain_;
@@ -384,14 +406,13 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
     SetToZero(*chains_[chain_id].sub_jacobian_.get());
 
     // Create subset q array ---------------
-    std::cout << OMPL_CONSOLE_COLOR_CYAN;
-
     // Get joints in correct ordering from joint model group
     std::vector<double> joints(chains_[chain_id].jmg_->getVariableCount()); // TODO don't copy to vector
     state->copyJointGroupPositions( chains_[chain_id].jmg_, chains_[chain_id].sub_q_in_->data );
 
     if (verbose_)
     {
+      std::cout << OMPL_CONSOLE_COLOR_CYAN;
       std::cout << "Sub joints for chain " << chain_id << " is: ";
       for (std::size_t i = 0; i < chains_[chain_id].sub_q_in_->rows(); ++i)
       {
@@ -514,9 +535,6 @@ bool JacobianGenerator::generateChainJacobian(const KDL::JntArray& q_in, KDL::Ja
       //changing base of new segment's twist to base frame if it is not locked
       if(!chains_[chain_id].locked_joints_[j])
       {
-        if (verbose_)
-          std::cout << " --> is NOT locked " << std::endl;
-
         t_twist_tmp_ = T_frame_tmp_.M * chains_[chain_id].kdl_chain_.getSegment(joint_id).twist( q_in(j), 1.0 );
       }
     }
@@ -538,10 +556,11 @@ bool JacobianGenerator::generateChainJacobian(const KDL::JntArray& q_in, KDL::Ja
       //Only put the twist inside if it is not locked
       if(!chains_[chain_id].locked_joints_[j])
       {
-        if (verbose_)
-          std::cout << " --> is NOT locked " << std::endl;
         jacobian.setColumn(k++, t_twist_tmp_);
       }
+      else if (verbose_)
+        std::cout << " --> is locked " << std::endl;
+
       j++;
     }
 
@@ -566,9 +585,6 @@ bool JacobianGenerator::linksToJointGroup( std::vector<const robot_model::JointM
     if (subgroup->getCommonRoot()->getParentLinkModel() == from &&
       subgroup->getLinkModels().back() == to)
     {
-      if (verbose_)
-        std::cout << " --> Found joint model group that has same first and last tips: " << subgroup->getName() << std::endl;
-
       found_group = subgroup;
       return true;
     }
