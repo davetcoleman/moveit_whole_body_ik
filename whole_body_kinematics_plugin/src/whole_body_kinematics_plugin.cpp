@@ -455,10 +455,10 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       total_iterations += counter;
       ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
 
-      if (verbose_)
+      if (true || verbose_)
       {
-        visual_tools_->publishRobotState(robot_state_);
-        ros::Duration(0.5).sleep();
+        //visual_tools_->publishRobotState(robot_state_);
+        //ros::Duration(0.5).sleep();
       }
 
       return true;
@@ -529,11 +529,11 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
       // Visualize progress
-      if (true || false && verbose_ && solver_iteration % 10 == 0)
+      if (false && solver_iteration % 100 == 0 || verbose_ && solver_iteration % 100 == 0)
       {
         // Publish
         visual_tools_->publishRobotState(robot_state_);
-        ros::Duration(0.15).sleep();
+        ros::Duration(0.05).sleep();
       }
 
     // For each end effector

@@ -125,7 +125,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   }
 
   // Now onto NULL space ==========================================================
-  /*
+
   // Create weighted position error vector
   bool show_weights = false;
 
@@ -139,7 +139,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
       tmp(i) = weights(i)*(joint_mid(i) - q_in(i));
     }
     // Liegeois paper on GPM ----------------------------------
-    else if (false)
+    else if (true)
     {
       // Calculate H(q)
       component = ( q_in(i) - joint_mid(i) ) / ( joint_mid(i) - joint_max(i) );
@@ -189,7 +189,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   }
   if (verbose)
     std::cout << std::endl;
-  */
+
 
   // Debug
   if (verbose)
