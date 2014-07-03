@@ -28,3 +28,19 @@ whole_body_fixed:
  - You must also define planning **subgroups** for any overlapping links. For example:
    - Group 1: ``BASE -> TORSO -> ARM1 -> HAND1`` group (has overlapping links with ARM2)
    - Group 2: ``TORSO -> HAND1`` group (no overlapping links with ARM2)
+
+# Assumptions
+
+Note: this code assumes your jmg (joint model group) is in this order:
+
+   TORSO
+   ARM
+   ARM
+   LEG
+   LEG
+
+if its not, im not sure what will happen
+   
+It also assumes your l & r arms each share x number of torso joints, and those are the only shared joints on the whole robot
+  
+Assumes all planning groups have their root at the base_link (root link)
