@@ -349,6 +349,8 @@ private:
     KDL::JntArray &jnt_array) const;
 
 
+  // Member Variables ----------------------------------------------------------------------------------------
+
   static const int TWIST_SIZE = 6;
 
   moveit_msgs::KinematicSolverInfo ik_group_info_; /** Stores information for the inverse kinematics solver */
@@ -383,6 +385,7 @@ private:
     CartesionToJointData(int dimension, int num_poses) 
       : qdot_(dimension),
         qdot_cache_(dimension),
+        prev_H_(dimension),
         delta_twists_( num_poses * 6 ),
         current_joint_values_(dimension),
         jacobian_(dimension, num_poses * 6) // TODO fix
@@ -391,6 +394,7 @@ private:
     KDL::JntArray delta_twists_; // multiple twists from different end effectors, each of which have 6 dof
     KDL::JntArray qdot_;
     KDL::JntArray qdot_cache_;
+    KDL::JntArray prev_H_; // track the change in performance criterion
     KDL::Frame current_pose_;
     KDL::Jacobian2d jacobian_;
     std::vector<double> current_joint_values_; // for visualizing. perhaps remove?
@@ -401,6 +405,8 @@ private:
   // ----------------------------------------------------------------
 
   random_numbers::RandomNumberGenerator *rng_;
+
+  ros::NodeHandle nh_;
 };
 }
 

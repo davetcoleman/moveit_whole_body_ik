@@ -68,8 +68,7 @@ public:
 
   ~IkSolverVel_pinv_nso() {};
 
-  virtual int CartToJnt2(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out);
-  virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out);
+  virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H);
 
   /**
    *Set joint weights for optimization criterion
@@ -78,6 +77,8 @@ public:
    *
    */
   virtual int setWeights(const JntArray &weights);
+
+  int setAllWeights(const double &weight);
 
   /**
    *Set null psace velocity gain
@@ -93,17 +94,19 @@ private:
   std::vector<JntArray> U;
   JntArray S;
   std::vector<JntArray> V;
-  JntArray tmp;
+  JntArray H; // performance criterion
+  JntArray tmp; 
   JntArray tmp2;
   double eps;
   int maxiter;
 
   double alpha;
   JntArray weights;
+  JntArray W; // weighting matrix
   JntArray joint_min;
   JntArray joint_max;
   JntArray joint_mid;
-  JntArray joint_constant;
+  JntArray joint_constant; // pre-compute some of the necessary values
   int num_tips; // number of end effectors to solve for
   bool verbose; // to show output debug info or not
 };

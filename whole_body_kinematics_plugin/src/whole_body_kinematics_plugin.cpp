@@ -60,7 +60,8 @@ namespace whole_body_kinematics_plugin
 {
 
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
-  : verbose_(false)
+  : verbose_(false),
+    nh_("~")
 {}
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
@@ -68,6 +69,7 @@ void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array)
   std::vector<double> jnt_array_vector(dimension_, 0.0);
   robot_state_->setToRandomPositions(joint_model_group_, *rng_);
   robot_state_->copyJointGroupPositions(joint_model_group_, &jnt_array_vector[0]);
+
   for (std::size_t i = 0; i < dimension_; ++i)
   {
     jnt_array(i) = jnt_array_vector[i];
@@ -112,7 +114,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
 
   // Load URDF and SRDF --------------------------------------------------------------------
-  ros::NodeHandle private_handle("~");
   rdf_loader::RDFLoader rdf_loader(robot_description_);
   const boost::shared_ptr<srdf::Model> &srdf = rdf_loader.getSRDF();
   const boost::shared_ptr<urdf::ModelInterface>& urdf_model = rdf_loader.getURDF();
@@ -225,8 +226,8 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
 
   // Get Solver Parameters from param server
-  private_handle.param("max_solver_iterations", max_solver_iterations_, 500);
-  private_handle.param("epsilon", epsilon_, 1e-5);
+  nh_.param("max_solver_iterations", max_solver_iterations_, 500);
+  nh_.param("epsilon", epsilon_, 1e-5);
 
   // Setup the joint state groups that we need
   robot_state_.reset(new robot_state::RobotState(robot_model_));
@@ -243,14 +244,14 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // i think this decides how much power the 'opt_positions' (above) has on the overall velocity.
   KDL::JntArray weights(dimension_);
   for(unsigned int i=0; i < dimension_; i++)
-    weights(i) = 0.5; //0.5;
+    weights(i) = 0.45;
 
   // if a singular value is below this value, its inverse is set to zero, default: 0.00001
   double eps=0.00001;
   // maximum iterations for the svd calculation, default: 150
   int maxiter=150;
   // alpha the null-space velocity gain
-  double alpha = 0.25;
+  double alpha = 0.45;
 
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
@@ -315,6 +316,15 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   {
     ROS_ERROR_STREAM_NAMED("cartesianToJoint","ROS requested shutdown");
     return -1;
+  }
+
+  // Optimization debug functionality
+  if (false)
+  {
+    double alpha;
+    nh_.param("alpha", alpha, 0.6);
+    ROS_INFO_STREAM_NAMED("temp","Read new alpha from param server of value: " << alpha << " from namespace " << nh_.getNamespace());
+    ik_solver_vel_->setAlpha(alpha);
   }
 
   // Check if seed state correct
@@ -385,7 +395,8 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   unsigned int counter(0);
   while(true)
   {
-    ROS_DEBUG_NAMED("whole_body_ik","Outer most iteration: %d, time: %f, Timeout: %f",counter,(ros::WallTime::now()-n1).toSec(),timeout);
+    if (verbose_)
+      ROS_DEBUG_NAMED("whole_body_ik","Outer most iteration: %d, time: %f, Timeout: %f",counter,(ros::WallTime::now()-n1).toSec(),timeout);
     counter++;
 
     // Check if timed out
@@ -455,12 +466,12 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       total_iterations += counter;
       ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
 
-      if (true || verbose_)
+      if (false || verbose_)
       {
         robot_state_->setJointGroupPositions(joint_model_group_, solution);
         visual_tools_->publishRobotState(robot_state_);
-        std::cout << "publshing! " << std::endl;
-        ros::Duration(0.5).sleep();
+        std::cout << "publishing! " << std::endl;
+        ros::Duration(0.1).sleep();
       }
 
       return true;
@@ -495,10 +506,18 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
   KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
   bool debug_would_have_stopped = false; // used for testing if we stopped to soon
+  double offset = 0.0001; // amount to move the joint away from the limit when the limit is hit
 
   // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
+  
+  // Set the performance criterion back to zero
+  for (std::size_t i = 0; i <   ctj_data_->prev_H_.rows(); ++i)
+  {
+    ctj_data_->prev_H_(i) = 0.0;    
+  }
 
+  // Start main loop
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
@@ -531,11 +550,11 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
     // Visualize progress
-    if (false && solver_iteration % 100 == 0 || verbose_ && solver_iteration % 100 == 0)
+    if (false && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 100 == 0)
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
-      ros::Duration(0.05).sleep();
+      //ros::Duration(1.1).sleep();
     }
 
     // For each end effector
@@ -576,7 +595,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       std::cout << std::endl;
     }
 
-    // Check if we are done
+    // Check if we are donep
     if (all_poses_valid)
     {
       if (verbose_)
@@ -608,8 +627,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel_->CartToJnt2(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_);
-
+    ik_solver_vel_->CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_, ctj_data_->prev_H_);
 
     // See velocities
     if (verbose_)
@@ -655,6 +673,17 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       }
     }
 
+    // Check
+    for (std::size_t i = 0; i < ctj_data_->qdot_.rows(); ++i)
+    {
+      if (isnan(ctj_data_->qdot_(i)))
+      {
+        std::cout << "FOUND NAN " << std::endl;
+        ctj_data_->qdot_.print();
+        break;
+      }
+    }
+
 
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
     // q_out = q_out + q_dot
@@ -667,13 +696,13 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       {
         if (verbose_)
           ROS_ERROR_STREAM_NAMED("cartesionToJoint","Min joint limit hit for joint " << j);
-        q_out(j) = joint_min_(j);
+        q_out(j) = joint_min_(j) + offset;
       }
       else if (q_out(j) > joint_max_(j))
       {
         if (verbose_)
           ROS_ERROR_STREAM_NAMED("cartesionToJoint","Max joint limit hit for joint " << j);
-        q_out(j) = joint_max_(j);
+        q_out(j) = joint_max_(j) - offset;
       }
     }
 
