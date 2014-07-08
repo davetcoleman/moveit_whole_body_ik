@@ -261,7 +261,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
-  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_, 
+  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_,
       weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
 
   ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
@@ -457,8 +457,10 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
 
       if (true || verbose_)
       {
-        //visual_tools_->publishRobotState(robot_state_);
-        //ros::Duration(0.5).sleep();
+        robot_state_->setJointGroupPositions(joint_model_group_, solution);
+        visual_tools_->publishRobotState(robot_state_);
+        std::cout << "publshing! " << std::endl;
+        ros::Duration(0.5).sleep();
       }
 
       return true;
@@ -495,7 +497,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   bool debug_would_have_stopped = false; // used for testing if we stopped to soon
 
   // Actualy requried vars
-  bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal  
+  bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
 
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
@@ -512,41 +514,41 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     all_poses_valid = true;
 
-      // Convert to vector of doubles
-      for (std::size_t i = 0; i < q_out.rows(); ++i)
-        ctj_data_->current_joint_values_[i] = q_out(i);
+    // Convert to vector of doubles
+    for (std::size_t i = 0; i < q_out.rows(); ++i)
+      ctj_data_->current_joint_values_[i] = q_out(i);
 
-      if (verbose_)
+    if (verbose_)
+    {
+      std::cout << "Curr JValues: " ;
+      //std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, ", "));
+      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
       {
-        std::cout << "Curr JValues: " ;
-        //std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, ", "));
-        for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
-        {
-          std::cout << boost::format("%10.4f") % ctj_data_->current_joint_values_[i];          
-        }
-        std::cout << std::endl;
+        std::cout << boost::format("%10.4f") % ctj_data_->current_joint_values_[i];
       }
-      robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
+      std::cout << std::endl;
+    }
+    robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
-      // Visualize progress
-      if (false && solver_iteration % 100 == 0 || verbose_ && solver_iteration % 100 == 0)
-      {
-        // Publish
-        visual_tools_->publishRobotState(robot_state_);
-        ros::Duration(0.05).sleep();
-      }
+    // Visualize progress
+    if (false && solver_iteration % 100 == 0 || verbose_ && solver_iteration % 100 == 0)
+    {
+      // Publish
+      visual_tools_->publishRobotState(robot_state_);
+      ros::Duration(0.05).sleep();
+    }
 
     // For each end effector
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
     {
-        // Do forward kinematics to get new EE pose location
-        Eigen::Affine3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
+      // Do forward kinematics to get new EE pose location
+      Eigen::Affine3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
 
-        // Bring the pose to the frame of the IK solver
-        robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
+      // Bring the pose to the frame of the IK solver
+      robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
 
-        // Convert Eigen::Affine3d to KDL::Frame
-        poseEigenToKDL(eef_pose, ctj_data_->current_pose_);
+      // Convert Eigen::Affine3d to KDL::Frame
+      poseEigenToKDL(eef_pose, ctj_data_->current_pose_);
 
       // Calculate the difference between our desired pose and current pose
       ctj_data_->delta_twist_ = diff(ctj_data_->current_pose_, kdl_poses[pose_id]);   // v_in = actual - target
@@ -606,7 +608,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel_->CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_);
+    ik_solver_vel_->CartToJnt2(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_);
 
 
     // See velocities
@@ -644,19 +646,19 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
       if (!has_change)
       {
-        if (verbose_ || true)
+        if (verbose_)
         {
           ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
         }
         debug_would_have_stopped = true;
-        //break;
+        break; // disable this to keep going
       }
     }
 
 
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
     // q_out = q_out + q_dot
-    Add(q_out, ctj_data_->qdot_, q_out); 
+    Add(q_out, ctj_data_->qdot_, q_out);
 
     // Enforce joint limits
     for (unsigned int j = 0; j < q_out.rows(); j++)

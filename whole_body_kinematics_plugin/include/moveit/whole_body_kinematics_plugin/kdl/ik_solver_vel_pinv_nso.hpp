@@ -35,6 +35,9 @@ namespace KDL
  * KDL::Chain. It uses a svd-calculation based on householders
  * rotations.
  *
+ * **This uses the Gradient Projection Method to produce a gradient that causes self-motion 
+ *   within the null space of the redudant kinematics (dof > 6).
+ *
  * In case of a redundant robot this solver optimizes the the following criterium:
  * g=0.5*sum(weight*(Desired_joint_positions - actual_joint_positions))^2 as described in
  *  A. Liegeois. Automatic supervisory control of the configuration and
@@ -65,7 +68,9 @@ public:
 
   ~IkSolverVel_pinv_nso() {};
 
+  virtual int CartToJnt2(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out);
   virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out);
+
   /**
    *Set joint weights for optimization criterion
    *

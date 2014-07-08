@@ -15,7 +15,7 @@ whole_body_fixed:
   kinematics_solver_search_resolution: 0.005
   kinematics_solver_timeout: 10
   kinematics_solver_attempts: 1
-  kinematics_solver_ik_links: # put in same order as joint model group presents!
+  kinematics_solver_ik_links:
     - LARM_LINK6
     - RARM_LINK6
     - LLEG_LINK5
