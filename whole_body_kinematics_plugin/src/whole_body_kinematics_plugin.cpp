@@ -550,11 +550,11 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
     // Visualize progress
-    if (false && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 100 == 0)
+    if (true && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 100 == 0)
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
-      //ros::Duration(1.1).sleep();
+      ros::Duration(0.1).sleep();
     }
 
     // For each end effector

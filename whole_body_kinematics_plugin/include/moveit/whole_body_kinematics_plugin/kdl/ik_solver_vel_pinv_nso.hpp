@@ -88,6 +88,8 @@ public:
    */
   virtual int setAlpha(const double alpha);
 
+  void print(Eigen::MatrixXd &data) const;
+
 private:
   //  Jacobian2d jacobian;
   SVD_HH svd;

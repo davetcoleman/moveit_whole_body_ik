@@ -21,6 +21,7 @@
 
 #include <moveit/whole_body_kinematics_plugin/kdl/ik_solver_vel_pinv_nso.hpp> // customized ik generalize pseudo inverse
 #include <iostream> // TODO remove
+#include <boost/format.hpp>
 
 namespace KDL
 {
@@ -149,49 +150,126 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
 
   int ret = svd.calculate(jacobian,U,S,V,maxiter);
 
-  double sum, component;
-  unsigned int i,j;
 
-  // We have to calculate qdot_out = jac_pinv*xdot_in
-  // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
-  // qdot_out = V*S_pinv*Ut*xdot_in
+  // Calculate pseudo inverse
+  // pinv(A) = V*S^(-1)*U^(T)
+  Eigen::MatrixXd pinverse;
 
-  if (verbose)
+  /*
+  int i, j, k;
+  int m = (int)jacobian.rows(); // eefs
+  int n = (int)jacobian.columns(); // joints
+  int min_mn = min(m,n);
+  double sum;
+
+  double _sv_ratio=1.0e-3;
+  double smin, smax=0.0;
+
+  //If the singular value is too small (<eps), don't invert it but
+  //set the inverted singular value to zero (truncated svd)
+  for (j = 0; j < min_mn; j++) 
+    if (S(j) > smax) 
+      smax = S(j);
+  smin = smax*_sv_ratio; 			// default _sv_ratio is 1.0e-3
+  for (j = 0; j < min_mn; j++) 
+    if (S(j) < smin) 
+      S(j) = 0.0;
+
+  // This section:
+  // S^(-1)*U^(T)
+  for (j = 0; j < m; j++) // rows
+  {
+    if (S(j))
+    {
+      for (i = 0; i < m; i++) // cols
+        U[j](i) /= S(j);
+    }
+    else
+    {
+      for (i = 0; i < m; i++)
+        U[j](i) = 0.0;
+    }
+  }
+
+  // Add the V:
+  // V * (S^(-1)*U^(T))
+  pinverse.resize(n,m);
+  for(j = 0; j < n; j++) // cols
+  {
+    for(i = 0; i < m; i++) // rows
+    {
+      pinverse(j,i) = 0.0;
+      for(k = 0; k < min_mn; k++) // min (m,n)
+      {
+        if(S(k))
+          pinverse(j,i) += V[j](k) * U[k](i); // TODO: V was vt, do i need to transpose it first?
+      }
+    }
+  }
+
+  //print(pinverse);
+
+  for (i = 0; i < n; ++i) // row of pinverse,
+  {
+    sum = 0.0;
+    for (j = 0; j < m; ++j) // column of pinverse
+    {
+      sum += pinverse(i,j) * xdot_in(j);
+    }
+    qdot_out(i) = W(i) *  sum;
+  }
+
+  */
+
+  return ret;
+
+
+
+  /*
+    double sum, component;
+    //  unsigned int i,j;
+
+    // We have to calculate qdot_out = jac_pinv*xdot_in
+    // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
+    // qdot_out = V*S_pinv*Ut*xdot_in
+
+
+    if (verbose)
     std::cout << "First we calculate Ut*xdot_in " << std::endl;
 
-  //first we calculate S_pinv*Ut*xdot_in
-  for (i=0;i<jacobian.columns();i++)
-  {
+    //first we calculate S_pinv*Ut*xdot_in
+    for (i=0;i<jacobian.columns();i++)
+    {
     sum = 0.0;
     for (j=0;j<jacobian.rows();j++)
     {
-      sum += U[j](i) * xdot_in(j);
+    sum += U[j](i) * xdot_in(j);
     }
     //If the singular value is too small (<eps), don't invert it but
     //set the inverted singular value to zero (truncated svd)
     if ( fabs(S(i))<eps )
     {
-      tmp(i) = 0.0 ;
+    tmp(i) = 0.0 ;
     }
     else
     {
-      tmp(i) = sum/S(i) ;
+    tmp(i) = sum/S(i) ;
     }
-  }
+    }
 
-  //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
-  //it with V to get qdot_out
-  for (i=0;i<jacobian.columns();i++)
-  {
+    //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
+    //it with V to get qdot_out
+    for (i=0;i<jacobian.columns();i++)
+    {
     sum = 0.0;
     for (j=0;j<jacobian.columns();j++)
     {
-      sum+=V[i](j)*tmp(j);
+    sum+=V[i](j)*tmp(j);
     }
     //Put the result in qdot_out
     qdot_out(i) = W(i) * sum;
-  }
-
+    }
+  */
   // Now onto NULL space ==========================================================
   /*
   // Create weighted position error vector
@@ -436,4 +514,32 @@ int IkSolverVel_pinv_nso::setAlpha(const double _alpha)
   return 0;
 }
 
+void IkSolverVel_pinv_nso::print(Eigen::MatrixXd &data) const
+{
+  std::cout << "------------ " << data.rows() << " rows by " << data.cols() << " cols --------------- " << std::endl;
+  std::cout << "[" << std::endl;
+  for (std::size_t i = 0; i < data.rows(); ++i)
+  {
+    std::cout << "[";
+    for (std::size_t j = 0; j < data.cols(); ++j)
+    {
+      // Hide zeros
+      if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
+        std::cout << boost::format("%6s") % "-";
+      else
+        std::cout << boost::format("%6.3f") % data(i,j);
+
+      if (j < data.cols() - 1)
+        std::cout << ",";
+    }
+    std::cout << "]";
+
+    // close the whole matrix
+    if (i == data.rows() - 1)
+      std::cout << "]";
+
+    std::cout << std::endl;
+  }
 }
+
+} // namespace
