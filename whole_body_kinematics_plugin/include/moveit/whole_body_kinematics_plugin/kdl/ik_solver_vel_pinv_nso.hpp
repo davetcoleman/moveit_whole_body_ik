@@ -111,6 +111,8 @@ private:
   JntArray joint_constant; // pre-compute some of the necessary values
   int num_tips; // number of end effectors to solve for
   bool verbose; // to show output debug info or not
+
+  Eigen::MatrixXd pinverse_; // psuedo inverse matrix
 };
 }
 #endif

@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   urdf
 )
 find_package(Eigen REQUIRED)
+find_package(LAPACK REQUIRED)
 
 catkin_package(
   LIBRARIES

@@ -61,7 +61,8 @@ namespace whole_body_kinematics_plugin
 
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
   : verbose_(false),
-    nh_("~")
+    nh_("~"),
+    joint_limit_offset_(0.0001)
 {}
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
@@ -503,10 +504,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
   q_out = q_init;
 
   // TEMP VARS:
-  int dimension_of_subgroup = dimension_/2; // TODO remove this hack and replace with robot_state/robot_model maybe
-  KDL::JntArray q_out_subgroup(dimension_of_subgroup); // TODO this is two-arm specific and is a terrible hack
   bool debug_would_have_stopped = false; // used for testing if we stopped to soon
-  double offset = 0.0001; // amount to move the joint away from the limit when the limit is hit
 
   // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
@@ -550,7 +548,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
     // Visualize progress
-    if (true && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 100 == 0)
+    if (false && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 100 == 0)
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
@@ -696,13 +694,13 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       {
         if (verbose_)
           ROS_ERROR_STREAM_NAMED("cartesionToJoint","Min joint limit hit for joint " << j);
-        q_out(j) = joint_min_(j) + offset;
+        q_out(j) = joint_min_(j) + joint_limit_offset_;
       }
       else if (q_out(j) > joint_max_(j))
       {
         if (verbose_)
           ROS_ERROR_STREAM_NAMED("cartesionToJoint","Max joint limit hit for joint " << j);
-        q_out(j) = joint_max_(j) - offset;
+        q_out(j) = joint_max_(j) - joint_limit_offset_;
       }
     }
 
