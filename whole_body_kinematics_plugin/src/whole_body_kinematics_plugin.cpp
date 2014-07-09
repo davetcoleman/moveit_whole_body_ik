@@ -62,7 +62,7 @@ namespace whole_body_kinematics_plugin
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
   : verbose_(false),
     nh_("~"),
-    joint_limit_offset_(0.0001)
+    joint_limit_offset_(0.001)
 {}
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array) const
@@ -252,7 +252,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // maximum iterations for the svd calculation, default: 150
   int maxiter=150;
   // alpha the null-space velocity gain
-  double alpha = 0.45;
+  double alpha = 0.1;
 
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
@@ -396,7 +396,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   unsigned int counter(0);
   while(true)
   {
-    if (verbose_)
+    if (verbose_ || true)
       ROS_DEBUG_NAMED("whole_body_ik","Outer most iteration: %d, time: %f, Timeout: %f",counter,(ros::WallTime::now()-n1).toSec(),timeout);
     counter++;
 

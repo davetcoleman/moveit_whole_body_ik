@@ -49,7 +49,9 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntAr
   joint_min(_joint_min),
   joint_max(_joint_max),
   joint_mid(_joint_min.rows()),
-  joint_constant(_joint_min.rows()),
+  joint_constant1(_joint_min.rows()),
+  joint_constant2(_joint_min.rows()),
+  joint_constant3(_joint_min.rows()),
   // Debugging
   verbose(_verbose)
 {
@@ -59,12 +61,18 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntAr
     joint_mid(i) = (joint_max(i) + joint_min(i)) / 2.0;
 
     // Calculate a component of the Zghal performance criterion
-    // const = (theta_max - theta_min)^2
-    joint_constant(i) = (joint_max(i) - joint_min(i)) * (joint_max(i) - joint_min(i));
+    joint_constant1(i) = (joint_max(i) - joint_min(i)) * (joint_max(i) - joint_min(i));
+    // Calculate components of the other performance criterion (from JSK - name unknown)
+    joint_constant2(i) = (joint_max(i) + joint_min(i)) / 2.0;
+    joint_constant3(i) = (joint_max(i) - joint_min(i)) / 2.0;
   }
 
   // Initialize the matrix
   pinverse_.resize(_num_joints, _num_tips);
+  tmp3_.resize    (_num_joints,_num_joints);
+  identity_.resize(_num_joints,_num_joints);
+
+  identity_.setIdentity();
 }
 
 /**
@@ -75,6 +83,139 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntAr
  * \param prev_H - contains the previous performance criterion
  */
 int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H)
+{
+  // weights:
+  bool use_wln = true;
+  // null space:
+  bool use_gpm = false;
+  // inverse methods:
+  bool use_psm = false;
+  bool use_kdl = !use_psm; // either or
+
+  unsigned int i,j;
+
+  // TODO: choose best ratio
+  double sv_ratio=1e-300; // default: 1.0e-3
+
+  // Find the Weighted Least Norm Jacobian
+  if (use_wln)
+    weightedLeastNorm(q_in, jacobian, prev_H);
+
+  // Method 1: Calculate the entire pseudo inverse as found in HRP --------------------------
+  if (use_psm)
+  {
+    // Calculate pseudo inverse
+    // pinv(A) = V*S^(-1)*U^(T)
+    hrp::calcPseudoInverse(jacobian.data, pinverse_, sv_ratio);
+
+    //print(pinverse_);
+
+    double sum;
+    for (i = 0; i < jacobian.columns(); ++i) // row of pinverse,
+    {
+      sum = 0.0;
+      for (j = 0; j < jacobian.rows(); ++j) // column of pinverse
+      {
+        sum += pinverse_(i,j) * xdot_in(j);
+      }
+
+      if (use_wln)
+        qdot_out(i) = W(i) *  sum;
+      else
+        qdot_out(i) = sum;
+    }
+  }
+
+  // Method 2: Do SVD faster using the KDL method ---------------------------------------------
+  if (use_kdl)
+  {
+    //Do a singular value decomposition of "jacobian" with maximum
+    //iterations "maxiter", put the results in "U", "S" and "V"
+    //jacobian = U*S*Vt
+    svd.calculate(jacobian,U,S,V,maxiter);
+
+    double sum;
+
+    // We have to calculate qdot_out = jac_pinv*xdot_in
+    // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
+    // qdot_out = V*S_pinv*Ut*xdot_in
+
+    //first we calculate S_pinv*Ut*xdot_in
+    for (i = 0;i < jacobian.columns();i++)
+    {
+      sum = 0.0;
+      for (j = 0;j < jacobian.rows();j++)
+      {
+        sum += U[j](i) * xdot_in(j);
+      }
+      //If the singular value is too small (<eps), don't invert it but
+      //set the inverted singular value to zero (truncated svd)
+      if ( fabs(S(i)) < eps )
+      {
+        tmp(i) = 0.0 ;
+      }
+      else
+      {
+        tmp(i) = sum/S(i) ;
+      }
+    }
+
+    //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
+    //it with V to get qdot_out
+    for (i = 0;i < jacobian.columns();i++)
+    {
+      sum = 0.0;
+      for (j = 0;j < jacobian.columns();j++)
+      {
+        sum += V[i](j) * tmp(j);
+      }
+
+      //Put the result in qdot_out
+      if (use_wln)
+        qdot_out(i) = W(i) * sum;
+      else
+        qdot_out(i) = sum;
+    }
+  }
+
+  // Gradient Projection Method using Null Space ----------------------------------------------
+
+  if (use_gpm)
+  {
+    // H
+    for(i = 0; i < jacobian.columns(); i++) // joints
+    {
+      //H(i) = 0.25 * joint_constant1(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
+      H(i) = ( joint_constant2(i) - q_in(i) ) / joint_constant3(i);
+    }
+
+    bool this_verbose = true;
+    if (this_verbose)
+    {
+      std::cout << "H criterion: " << std::endl;
+      H.print();
+    }
+
+    // qdot += k(I - J^(+)*J)
+    tmp3_ = alpha * (identity_ - pinverse_ * jacobian.data) * H.data;  // TODO is this jacobian already weighted?
+
+    if (this_verbose)
+    {
+      std::cout << "QDot before null space componet:" << std::endl;
+      qdot_out.print();
+
+      std::cout << "Null space component: " << std::endl;
+      print(tmp3_);
+    }
+
+    qdot_out.data += tmp3_;
+  }
+
+
+  return 1;
+}
+
+bool IkSolverVel_pinv_nso::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H)
 {
   double gradientH;
 
@@ -101,8 +242,8 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
 
     // TODO: remove this safety check
     /*
-    if ( isnan(gradientH) || isnan(W(i)) || isnan(-1/sqrt(W(i))))
-    {
+      if ( isnan(gradientH) || isnan(W(i)) || isnan(-1/sqrt(W(i))))
+      {
       std::cout << "Is nan! " << std::endl;
       std::cout << "  gradH:  " << gradientH << std::endl;
       std::cout << "  first:  " << pow(joint_max(i) - q_in(i), 2) * (2*q_in(i) - joint_max(i) - joint_min(i) ) << std::endl;
@@ -115,7 +256,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
       std::cout << "  W(i)^(-1/2): " << 1/sqrt(W(i)) << std::endl;
       q_in.print();
       std::cout << "---------------------------- " << std::endl;
-    }
+      }
     */
 
     // Prepare the weight for multiplication by the jacobian
@@ -142,82 +283,73 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
     }
   }
 
-  // Method 1: Calculate the entire pseudo inverse as found in HRP --------------------------
-  /*
-  // Calculate pseudo inverse
-  // pinv(A) = V*S^(-1)*U^(T)
-  hrp::calcPseudoInverse(jacobian.data, pinverse_);
+  return true;
+}
 
-  //print(pinverse_);
+int IkSolverVel_pinv_nso::setWeights(const JntArray & _weights)
+{
+  weights = _weights;
+  return 0;
+}
 
-  int i, j;
-  double sum;
-  for (i = 0; i < jacobian.columns(); ++i) // row of pinverse,
+int IkSolverVel_pinv_nso::setAllWeights(const double &weight)
+{
+  for(unsigned int i=0; i < weights.rows(); i++)
+    weights(i) = weight;
+
+  return 0;
+}
+
+int IkSolverVel_pinv_nso::setAlpha(const double _alpha)
+{
+  alpha = _alpha;
+  return 0;
+}
+
+void IkSolverVel_pinv_nso::print(Eigen::MatrixXd &data) const
+{
+  std::cout << "------------ " << data.rows() << " rows by " << data.cols() << " cols --------------- " << std::endl;
+  std::cout << "[" << std::endl;
+  for (std::size_t i = 0; i < data.rows(); ++i)
   {
-    sum = 0.0;
-    for (j = 0; j < jacobian.rows(); ++j) // column of pinverse
+    std::cout << "[";
+    for (std::size_t j = 0; j < data.cols(); ++j)
     {
-      sum += pinverse_(i,j) * xdot_in(j);
+      // Hide zeros
+      if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
+        std::cout << boost::format("%6s") % "-";
+      else
+        std::cout << boost::format("%6.3f") % data(i,j);
+
+      if (j < data.cols() - 1)
+        std::cout << ",";
     }
-    qdot_out(i) = W(i) *  sum;
+    std::cout << "]";
+
+    // close the whole matrix
+    if (i == data.rows() - 1)
+      std::cout << "]";
+
+    std::cout << std::endl;
   }
+}
 
 
-  return 1;
-  */
-
-  // Method 2: Do SVD faster using the KDL method ---------------------------------------------
-
-  //Do a singular value decomposition of "jacobian" with maximum
-  //iterations "maxiter", put the results in "U", "S" and "V"
-  //jacobian = U*S*Vt
-  int ret = svd.calculate(jacobian,U,S,V,maxiter);
-
-  double sum, component;
-  unsigned int i,j;
-
-  // We have to calculate qdot_out = jac_pinv*xdot_in
-  // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
-  // qdot_out = V*S_pinv*Ut*xdot_in
-
-
-  if (verbose)
-    std::cout << "First we calculate Ut*xdot_in " << std::endl;
-
-  //first we calculate S_pinv*Ut*xdot_in
-  for (i=0;i<jacobian.columns();i++)
+void IkSolverVel_pinv_nso::print(Eigen::VectorXd &data) const
+{
+  std::cout << "========= " << data.rows() << "x Joint Array =======" << std::endl;
+  for (std::size_t i = 0; i < data.rows(); ++i)
   {
-    sum = 0.0;
-    for (j=0;j<jacobian.rows();j++)
-    {
-      sum += U[j](i) * xdot_in(j);
-    }
-    //If the singular value is too small (<eps), don't invert it but
-    //set the inverted singular value to zero (truncated svd)
-    if ( fabs(S(i))<eps )
-    {
-      tmp(i) = 0.0 ;
-    }
-    else
-    {
-      tmp(i) = sum/S(i) ;
-    }
+    std::cout << data(i) << std::endl;
   }
+  std::cout << "======================= " << std::endl;
+}
 
-  //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
-  //it with V to get qdot_out
-  for (i=0;i<jacobian.columns();i++)
-  {
-    sum = 0.0;
-    for (j=0;j<jacobian.columns();j++)
-    {
-      sum+=V[i](j)*tmp(j);
-    }
-    //Put the result in qdot_out
-    qdot_out(i) = W(i) * sum;
-  }
-  //return the return value of the svd decomposition
-  return ret;
+
+} // namespace
+
+
+
 
   // Now onto NULL space ==========================================================
   /*
@@ -242,7 +374,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   // the better one from A Weighted Least-Norm Solution Based Scheme for Avoiding Joint Limits for Redundant Joint Manipilators
   else if (true)
   {
-  // H(q) = 1/4 * (max - min)^2 / [ (max - theta)(theta-min) ]
+  // H(q) = 1/4 * (maxaa - min)^2 / [ (max - theta)(theta-min) ]
   H(i) = 0.25 * joint_constant(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
   }
   else
@@ -301,194 +433,3 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
 
   //return the return value of the svd decomposition
   //  return ret;
-}
-
-/*
-  int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, const Jacobian2d& jacobian, JntArray& qdot_out)
-  {
-
-  if (verbose && false)
-  {
-  std::cout << "Resulting Combined Jacobian:" << std::endl;
-  jacobian.print();
-  }
-
-  //Do a singular value decomposition of "jacobian" with maximum
-  //iterations "maxiter", put the results in "U", "S" and "V"
-  //jacobian = U*S*Vt
-  if (verbose)
-  std::cout << "Singular value decomposition: " << std::endl;
-
-  int ret = svd.calculate(jacobian,U,S,V,maxiter);
-
-  double sum, component;
-  unsigned int i,j;
-
-  // We have to calculate qdot_out = jac_pinv*xdot_in
-  // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
-  // qdot_out = V*S_pinv*Ut*xdot_in
-
-  if (verbose)
-  std::cout << "First we calculate Ut*xdot_in " << std::endl;
-
-  //first we calculate S_pinv*Ut*xdot_in
-  for (i=0;i<jacobian.columns();i++)
-  {
-  sum = 0.0;
-  for (j=0;j<jacobian.rows();j++)
-  {
-  sum += U[j](i) * xdot_in(j);
-  }
-  //If the singular value is too small (<eps), don't invert it but
-  //set the inverted singular value to zero (truncated svd)
-  if ( fabs(S(i))<eps )
-  {
-  tmp(i) = 0.0 ;
-  }
-  else
-  {
-  tmp(i) = sum/S(i) ;
-  }
-  }
-
-  //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
-  //it with V to get qdot_out
-  for (i=0;i<jacobian.columns();i++)
-  {
-  sum = 0.0;
-  for (j=0;j<jacobian.columns();j++)
-  {
-  sum+=V[i](j)*tmp(j);
-  }
-  //Put the result in qdot_out
-  qdot_out(i)=sum;
-  }
-
-  // Now onto NULL space ==========================================================
-
-  // Create weighted position error vector
-  bool show_criterions = false;
-  if (show_criterions)
-  std::cout << "Criterions:  ";
-  for(i = 0; i < jacobian.columns(); i++)
-  {
-  // Original:
-  if (false)
-  {
-  tmp(i) = weights(i)*(joint_mid(i) - q_in(i));
-  }
-  // Liegeois paper on GPM ----------------------------------
-  else if (true)
-  {
-  // Calculate H(q)
-  component = ( q_in(i) - joint_mid(i) ) / ( joint_mid(i) - joint_max(i) );
-  tmp(i) = (component*component) / jacobian.columns();
-  }
-  else
-  {
-  // Performance criterion
-  tmp(i) = 0.25 * joint_constant(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
-
-  }
-  if (show_criterions)
-  std::cout << tmp(i) << " | ";
-  }
-  if (show_criterions)
-  std::cout << std::endl;
-
-  //Vtn*tmp
-  // temp2 is a vector the length of our redudant dofs (joints n - 6)
-  // temp2 = V * tmp
-  for (i = jacobian.rows()+1;i<jacobian.columns();i++)
-  {
-  tmp2(i-(jacobian.rows()+1)) = 0.0;
-  for (j = 0;j<jacobian.columns();j++)
-  {
-  tmp2(i-(jacobian.rows()+1)) += V[j](i)*tmp(j);
-  }
-  }
-
-  // Add the velocity of the null space redudancy to our qdot_out
-  // qdot_out = qdot_out + alpha*temp2
-  if (verbose)
-  std::cout << "Null space: ";
-  for (i = 0;i<jacobian.columns();i++)
-  {
-  sum = 0.0;
-  for (j = jacobian.rows()+1;j<jacobian.columns();j++)
-  {
-  sum += V[i](j)*tmp2(j);
-  }
-
-  if (verbose)
-  std::cout << alpha*sum << "  ";
-  qdot_out(i) += alpha*sum;
-  }
-  if (verbose)
-  std::cout << std::endl;
-
-
-  // Debug
-  if (verbose)
-  {
-  std::cout << "Joint Velocity: " << std::endl;
-  for (std::size_t i = 0; i < qdot_out.rows(); ++i)
-  {
-  std::cout << "Joint " << i << ": " << qdot_out(i) << std::endl;
-  }
-  }
-
-  //return the return value of the svd decomposition
-  return ret;
-  }
-*/
-
-int IkSolverVel_pinv_nso::setWeights(const JntArray & _weights)
-{
-  weights = _weights;
-  return 0;
-}
-
-int IkSolverVel_pinv_nso::setAllWeights(const double &weight)
-{
-  for(unsigned int i=0; i < weights.rows(); i++)
-    weights(i) = weight;
-
-  return 0;
-}
-
-int IkSolverVel_pinv_nso::setAlpha(const double _alpha)
-{
-  alpha = _alpha;
-  return 0;
-}
-
-void IkSolverVel_pinv_nso::print(Eigen::MatrixXd &data) const
-{
-  std::cout << "------------ " << data.rows() << " rows by " << data.cols() << " cols --------------- " << std::endl;
-  std::cout << "[" << std::endl;
-  for (std::size_t i = 0; i < data.rows(); ++i)
-  {
-    std::cout << "[";
-    for (std::size_t j = 0; j < data.cols(); ++j)
-    {
-      // Hide zeros
-      if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
-        std::cout << boost::format("%6s") % "-";
-      else
-        std::cout << boost::format("%6.3f") % data(i,j);
-
-      if (j < data.cols() - 1)
-        std::cout << ",";
-    }
-    std::cout << "]";
-
-    // close the whole matrix
-    if (i == data.rows() - 1)
-      std::cout << "]";
-
-    std::cout << std::endl;
-  }
-}
-
-} // namespace

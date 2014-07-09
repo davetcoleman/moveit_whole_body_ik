@@ -70,6 +70,8 @@ public:
 
   virtual int CartToJnt(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H);
 
+  bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H);
+
   /**
    *Set joint weights for optimization criterion
    *
@@ -89,6 +91,7 @@ public:
   virtual int setAlpha(const double alpha);
 
   void print(Eigen::MatrixXd &data) const;
+  void print(Eigen::VectorXd &data) const;
 
 private:
   //  Jacobian2d jacobian;
@@ -108,11 +111,15 @@ private:
   JntArray joint_min;
   JntArray joint_max;
   JntArray joint_mid;
-  JntArray joint_constant; // pre-compute some of the necessary values
+  JntArray joint_constant1; // pre-compute some of the necessary values
+  JntArray joint_constant2; // pre-compute some of the necessary values
+  JntArray joint_constant3; // pre-compute some of the necessary values
   int num_tips; // number of end effectors to solve for
   bool verbose; // to show output debug info or not
 
   Eigen::MatrixXd pinverse_; // psuedo inverse matrix
+  Eigen::MatrixXd tmp3_; // psuedo inverse matrix
+  Eigen::MatrixXd identity_; // reusuable identity matrix
 };
 }
 #endif

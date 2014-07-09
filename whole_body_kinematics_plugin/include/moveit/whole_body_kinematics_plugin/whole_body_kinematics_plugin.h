@@ -368,7 +368,7 @@ private:
   robot_model::JointModelGroup* joint_model_group_;
   int max_solver_iterations_;
   double epsilon_;
-  double joint_limit_offset_; // amount to move the joint away from the limit when the limit is hit
+  double joint_limit_offset_; // amount to move the joint away from the limit when the limit is hit. setting to zero will cause nan to occur in calculations
 
   bool verbose_; // show debug info
 
