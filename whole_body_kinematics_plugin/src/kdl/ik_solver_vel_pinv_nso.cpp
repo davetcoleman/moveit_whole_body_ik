@@ -68,9 +68,10 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntAr
   }
 
   // Initialize the matrix
-  pinverse_.resize(_num_joints, _num_tips);
-  tmp3_.resize    (_num_joints,_num_joints);
-  identity_.resize(_num_joints,_num_joints);
+  pinverse_.resize(_num_joints, _num_tips*6);
+  tmp3_.resize    (_num_joints, _num_joints);
+  tmp4_.resize    (_num_joints, _num_tips*6);
+  identity_.resize(_num_joints, _num_joints);
 
   identity_.setIdentity();
 }
@@ -81,18 +82,20 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntAr
  * \param jacobian
  * \param qdot_out - velocity (delta q) - change in joint values
  * \param prev_H - contains the previous performance criterion
- */
+ 7 */
 int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H)
 {
   // weights:
-  bool use_wln = true;
-  // null space:
-  bool use_gpm = false;
+  bool use_wln = false;
   // inverse methods:
   bool use_psm = false;
-  bool use_kdl = !use_psm; // either or
+  bool use_kdl = false;
+  bool use_kdl2 = true;
+  // null space:
+  bool use_gpm = false;
 
   unsigned int i,j;
+  double sum;
 
   // TODO: choose best ratio
   double sv_ratio=1e-300; // default: 1.0e-3
@@ -108,9 +111,9 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
     // pinv(A) = V*S^(-1)*U^(T)
     hrp::calcPseudoInverse(jacobian.data, pinverse_, sv_ratio);
 
-    //print(pinverse_);
+    print(pinverse_);
 
-    double sum;
+    // Apply pinverse to the velocity vector
     for (i = 0; i < jacobian.columns(); ++i) // row of pinverse,
     {
       sum = 0.0;
@@ -133,8 +136,6 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
     //iterations "maxiter", put the results in "U", "S" and "V"
     //jacobian = U*S*Vt
     svd.calculate(jacobian,U,S,V,maxiter);
-
-    double sum;
 
     // We have to calculate qdot_out = jac_pinv*xdot_in
     // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
@@ -178,6 +179,102 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
     }
   }
 
+  // Method 3: Do SVD faster using the KDL method but directly calc pseudo invers---------------------------------------------
+  if (use_kdl2)
+  {
+    //Do a singular value decomposition of "jacobian" with maximum
+    //iterations "maxiter", put the results in "U", "S" and "V"
+    //jacobian = U*S*Vt
+    svd.calculate(jacobian,U,S,V,maxiter);
+
+    if (verbose)
+    {
+      std::cout << "U ------------------- " << std::endl;
+      std::cout << "rows " << U.size() << std::endl;
+      std::cout << "col " << U[0].rows() << std::endl;
+      for (i = 0; i < U.size(); ++i)
+      {
+        for (j = 0; j < U[i].rows(); ++j)
+        {
+          std::cout << U[i](j) << ", ";
+        }
+        std::cout << std::endl;
+      }
+
+      std::cout << "S " << std::endl;
+      S.print();
+    }
+
+    //J^(+) = V*S^(-1)*U^(T)
+
+    int m = jacobian.columns(); // joints
+    int n = jacobian.rows(); // eefs
+
+    // We have to calculate qdot_out = jac_pinv*xdot_in
+    // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
+    // qdot_out = V*S_pinv*Ut*xdot_in
+
+    //first we calculate S_pinv*Ut
+    for (i = 0;i < n; i++) // eefs / rows
+    {
+      for (j = 0;j < m; j++) // joints / columns
+      {
+        //If the singular value is too small (<eps), don't invert it but
+        //set the inverted singular value to zero (truncated svd)
+        if ( fabs(S(j)) < eps )
+        {
+          tmp4_(j,i) = 0.0 ;
+        }
+        else
+        {
+          tmp4_(j,i) = U[i](j) / S(j) ;
+        }
+      }
+    }
+
+    if (verbose)
+    {
+      std::cout << "tmp4 " << std::endl;
+      print(tmp4_);
+    }
+
+    // tmp4 = S_pinv*Ut
+    // we still have to premultiply it with V
+    for (i = 0; i < n; i++) // eefs / rows
+    {
+      for (j = 0; j < m; j++) // joints / columns
+      {
+        sum = 0.0;
+        for (std::size_t k = 0; k < m; ++k)
+        {
+          sum += V[j](k) * tmp4_(k,i);
+        }
+        pinverse_(j, i) = sum;
+      }
+    }
+
+    if (verbose)
+    {
+      std::cout << "pinverse " << std::endl;
+      print(pinverse_);
+    }
+
+    // Apply pinverse to the velocity vector
+    for (i = 0; i < jacobian.columns(); ++i) // row of pinverse,
+    {
+      sum = 0.0;
+      for (j = 0; j < jacobian.rows(); ++j) // column of pinverse
+      {
+        sum += pinverse_(i,j) * xdot_in(j);
+      }
+
+      if (use_wln)
+        qdot_out(i) = W(i) *  sum;
+      else
+        qdot_out(i) = sum;
+    }
+  }
+
   // Gradient Projection Method using Null Space ----------------------------------------------
 
   if (use_gpm)
@@ -186,18 +283,31 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
     for(i = 0; i < jacobian.columns(); i++) // joints
     {
       //H(i) = 0.25 * joint_constant1(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
-      H(i) = ( joint_constant2(i) - q_in(i) ) / joint_constant3(i);
+      //H(i) = ( joint_constant2(i) - q_in(i) ) / joint_constant3(i);
+
+      // Calculate the change in joint location relative to its limits
+      H(i) =
+        pow(joint_max(i) - q_in(i), 2) * (2*q_in(i) - joint_max(i) - joint_min(i) )
+        /
+        ( 4 * pow(joint_max(i)-q_in(i),2) * pow(q_in(i) - joint_min(i),2) );
     }
 
-    bool this_verbose = true;
+    bool this_verbose = false;
     if (this_verbose)
     {
+      std::cout << "Identity " << std::endl;
+      print(identity_);
+      std::cout << "pinverse: " << std::endl;
+      print(pinverse_);
+      std::cout << "Jacobian: " << std::endl;
+      jacobian.print();
       std::cout << "H criterion: " << std::endl;
       H.print();
+      std::cout << "Alpha: " << alpha << std::endl;
     }
 
     // qdot += k(I - J^(+)*J)
-    tmp3_ = alpha * (identity_ - pinverse_ * jacobian.data) * H.data;  // TODO is this jacobian already weighted?
+    tmp3_ = -1 * alpha * (identity_ - pinverse_ * jacobian.data) * H.data;  // TODO is this jacobian already weighted?
 
     if (this_verbose)
     {
@@ -209,6 +319,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
     }
 
     qdot_out.data += tmp3_;
+
   }
 
 
@@ -267,7 +378,7 @@ bool IkSolverVel_pinv_nso::weightedLeastNorm(const JntArray& q_in, Jacobian2d& j
     prev_H(i) = gradientH;
   }
 
-  if (verbose)
+  if (verbose || false)
   {
     std::cout << "Weighing Matrix: " << std::endl;
     W.print();
@@ -316,9 +427,11 @@ void IkSolverVel_pinv_nso::print(Eigen::MatrixXd &data) const
     for (std::size_t j = 0; j < data.cols(); ++j)
     {
       // Hide zeros
+      /*
       if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
         std::cout << boost::format("%6s") % "-";
       else
+      */
         std::cout << boost::format("%6.3f") % data(i,j);
 
       if (j < data.cols() - 1)

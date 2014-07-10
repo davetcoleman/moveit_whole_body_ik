@@ -119,6 +119,7 @@ private:
 
   Eigen::MatrixXd pinverse_; // psuedo inverse matrix
   Eigen::MatrixXd tmp3_; // psuedo inverse matrix
+  Eigen::MatrixXd tmp4_; 
   Eigen::MatrixXd identity_; // reusuable identity matrix
 };
 }
