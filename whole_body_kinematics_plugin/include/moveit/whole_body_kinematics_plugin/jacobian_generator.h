@@ -128,6 +128,13 @@ public:
   bool initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
     const std::vector<std::string>& tip_frames, const robot_model::JointModelGroup *jmg);
 
+  // For non-chain kinematics
+  bool matchTipsToSubgroups(const robot_model::RobotModelPtr robot_model, const std::vector<std::string>& tip_frames, 
+    const robot_model::JointModelGroup *jmg, int &expected_dimensions);
+
+  // Helper for adding chains that do not share any common links (i.e. legs)
+  void addChain(const robot_model::JointModelGroup *current_group, int &full_jac_row_location, int &full_jac_col_location);
+
   /**
    * Calculate the jacobian expressed in the base frame of the
    * chain, with reference point at the end effector of the

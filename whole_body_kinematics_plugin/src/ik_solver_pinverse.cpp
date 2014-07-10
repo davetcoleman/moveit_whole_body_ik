@@ -33,7 +33,7 @@
  *********************************************************************/
 
 /* Author: Dave Coleman
-           Based on ik solver code from Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
+   Based on ik solver code from Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
 */
 
 #include <moveit/whole_body_kinematics_plugin/ik_solver_pinverse.h>
@@ -45,11 +45,11 @@ namespace whole_body_kinematics_plugin
 {
 
 IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
-  JntArray _weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double _alpha, bool _verbose)
+  JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double _alpha, bool verbose)
   :
   // Load the jacobian to have #joint ROWS x #tips COLS
   //  jacobian(_num_joints, _num_tips*6),
-  svd(jacobian),
+  svd_(jacobian),
   U(_num_tips*6,JntArray(_num_joints)),
   S(_num_joints),
   V(_num_joints, JntArray(_num_joints)),
@@ -58,9 +58,9 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
   tmp2(_num_joints-6*_num_tips),
   eps(_eps),
   maxiter(_maxiter),
-  alpha(_alpha),
+  alpha_(_alpha),
   num_tips(_num_tips),
-  weights(_weights),
+  weights_(weights),
   W(_num_joints),
   // Properties of joint
   joint_min(_joint_min),
@@ -70,7 +70,7 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
   joint_constant2(_joint_min.rows()),
   joint_constant3(_joint_min.rows()),
   // Debugging
-  verbose(_verbose)
+  verbose_(verbose)
 {
   for (std::size_t i = 0; i < joint_min.rows(); ++i)
   {
@@ -109,7 +109,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   bool use_kdl = false;
   bool use_kdl2 = true;
   // null space:
-  bool use_gpm = false;
+  bool use_gpm = true; // not with use_kdl
 
   unsigned int i,j;
   double sum;
@@ -128,7 +128,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     // pinv(A) = V*S^(-1)*U^(T)
     hrp::calcPseudoInverse(jacobian.data, pinverse_, sv_ratio);
 
-    print(pinverse_);
+    //print(pinverse_);
 
     // Apply pinverse to the velocity vector
     for (i = 0; i < jacobian.columns(); ++i) // row of pinverse,
@@ -152,7 +152,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     //Do a singular value decomposition of "jacobian" with maximum
     //iterations "maxiter", put the results in "U", "S" and "V"
     //jacobian = U*S*Vt
-    svd.calculate(jacobian,U,S,V,maxiter);
+    svd_.calculate(jacobian,U,S,V,maxiter);
 
     // We have to calculate qdot_out = jac_pinv*xdot_in
     // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
@@ -202,9 +202,9 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     //Do a singular value decomposition of "jacobian" with maximum
     //iterations "maxiter", put the results in "U", "S" and "V"
     //jacobian = U*S*Vt
-    svd.calculate(jacobian,U,S,V,maxiter);
+    svd_.calculate(jacobian,U,S,V,maxiter);
 
-    if (verbose)
+    if (verbose_)
     {
       std::cout << "U ------------------- " << std::endl;
       std::cout << "rows " << U.size() << std::endl;
@@ -249,7 +249,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       }
     }
 
-    if (verbose)
+    if (verbose_)
     {
       std::cout << "tmp4 " << std::endl;
       print(tmp4_);
@@ -270,7 +270,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       }
     }
 
-    if (verbose)
+    if (verbose_)
     {
       std::cout << "pinverse " << std::endl;
       print(pinverse_);
@@ -300,45 +300,74 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     for(i = 0; i < jacobian.columns(); i++) // joints
     {
       //H(i) = 0.25 * joint_constant1(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
+
       //H(i) = ( joint_constant2(i) - q_in(i) ) / joint_constant3(i);
 
       // Calculate the change in joint location relative to its limits
+
       H(i) =
         pow(joint_max(i) - q_in(i), 2) * (2*q_in(i) - joint_max(i) - joint_min(i) )
         /
         ( 4 * pow(joint_max(i)-q_in(i),2) * pow(q_in(i) - joint_min(i),2) );
+
+      /*
+        H(i) = 0;
+        if (i == 3)
+        H(3) = 1;
+      */
     }
 
-    bool this_verbose = false;
+    bool this_verbose = true;
     if (this_verbose)
     {
-      std::cout << "Identity " << std::endl;
+      std::cout << std::endl  << "Identity " << std::endl;
       print(identity_);
-      std::cout << "pinverse: " << std::endl;
+      std::cout << std::endl  << "pinverse: " << std::endl;
       print(pinverse_);
-      std::cout << "Jacobian: " << std::endl;
+      std::cout << std::endl  << "Jacobian: " << std::endl;
       jacobian.print();
-      std::cout << "H criterion: " << std::endl;
+      std::cout << std::endl  << "H criterion: " << std::endl;
       H.print();
-      std::cout << "Alpha: " << alpha << std::endl;
+      std::cout << std::endl  << "Alpha: " << alpha_ << std::endl;
     }
+
+    std::cout << "J^+ * J" << std::endl;
+    tmp3_ = (pinverse_ * jacobian.data);
+    print(tmp3_);
+
+    std::cout << "I - J^+ * J" << std::endl;
+    tmp3_ = (identity_ - pinverse_ * jacobian.data);
+    print(tmp3_);
+
+    // temp H
+    /*
+      Eigen::VectorXd tempH;
+      tempH.resize(H.data.rows(),1);
+      tempH[3] = 1;
+      std::cout << "H tmp " << std::endl;
+      print(tempH);
+    */
+
+    std::cout << "* H " << std::endl;
+    tmp3_ = (identity_ - pinverse_ * jacobian.data) * H.data;
+    print(tmp3_);
 
     // qdot += k(I - J^(+)*J)
-    tmp3_ = -1 * alpha * (identity_ - pinverse_ * jacobian.data) * H.data;  // TODO is this jacobian already weighted?
+    tmp3_ = alpha_ * (identity_ - pinverse_ * jacobian.data) * H.data;  // TODO is this jacobian already weighted?
 
     if (this_verbose)
     {
-      std::cout << "QDot before null space componet:" << std::endl;
+      std::cout << std::endl  << "QDot before null space componet:" << std::endl;
       qdot_out.print();
 
-      std::cout << "Null space component: " << std::endl;
+      std::cout << std::endl  << "Null space component: " << std::endl;
       print(tmp3_);
     }
 
     qdot_out.data += tmp3_;
 
   }
-
+  exit(0);
 
   return 1;
 }
@@ -395,7 +424,7 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
     prev_H(i) = gradientH;
   }
 
-  if (verbose || false)
+  if (verbose_ || false)
   {
     std::cout << "Weighing Matrix: " << std::endl;
     W.print();
@@ -414,23 +443,23 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
   return true;
 }
 
-int IkSolverPinverse::setWeights(const JntArray & _weights)
+int IkSolverPinverse::setWeights(const JntArray & weights)
 {
-  weights = _weights;
+  weights_ = weights;
   return 0;
 }
 
 int IkSolverPinverse::setAllWeights(const double &weight)
 {
-  for(unsigned int i=0; i < weights.rows(); i++)
-    weights(i) = weight;
+  for(unsigned int i=0; i < weights_.rows(); i++)
+    weights_(i) = weight;
 
   return 0;
 }
 
-int IkSolverPinverse::setAlpha(const double _alpha)
+int IkSolverPinverse::setAlpha(const double alpha)
 {
-  alpha = _alpha;
+  alpha_ = alpha;
   return 0;
 }
 
@@ -445,11 +474,11 @@ void IkSolverPinverse::print(Eigen::MatrixXd &data) const
     {
       // Hide zeros
       /*
-      if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
+        if ( data(i,j) <= std::numeric_limits<double>::epsilon() )
         std::cout << boost::format("%6s") % "-";
-      else
+        else
       */
-        std::cout << boost::format("%6.3f") % data(i,j);
+      std::cout << boost::format("%6.10f") % data(i,j);
 
       if (j < data.cols() - 1)
         std::cout << ",";

@@ -107,7 +107,7 @@ public:
 
 private:
   //  Jacobian2d jacobian;
-  SVD_HH svd;
+  SVD_HH svd_;
   std::vector<JntArray> U;
   JntArray S;
   std::vector<JntArray> V;
@@ -117,8 +117,8 @@ private:
   double eps;
   int maxiter;
 
-  double alpha;
-  JntArray weights;
+  double alpha_;
+  JntArray weights_;
   JntArray W; // weighting matrix
   JntArray joint_min;
   JntArray joint_max;
@@ -127,7 +127,7 @@ private:
   JntArray joint_constant2; // pre-compute some of the necessary values
   JntArray joint_constant3; // pre-compute some of the necessary values
   int num_tips; // number of end effectors to solve for
-  bool verbose; // to show output debug info or not
+  bool verbose_; // to show output debug info or not
 
   Eigen::MatrixXd pinverse_; // psuedo inverse matrix
   Eigen::MatrixXd tmp3_; // psuedo inverse matrix

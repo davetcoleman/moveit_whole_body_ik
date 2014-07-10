@@ -131,9 +131,10 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   if (!joint_model_group_)
     return false;
 
-  if(joint_model_group_->isChain())
+  // If jmg is a chain, it can only have one tip
+  if(joint_model_group_->isChain() && tip_frames.size() > 1)
   {
-    ROS_ERROR_NAMED("whole_body_ik","Group '%s' is a chain, which this plugin might not support. I've only tested it with non-chains", group_name.c_str());
+    ROS_ERROR_STREAM_NAMED("temp","The joint model group specified is a chain but " << tip_frames.size() << " tip frames and poses were passed in");
     return false;
   }
   if(!joint_model_group_->isSingleDOFJoints())
@@ -174,10 +175,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     std::cout << std::endl << "Tip Link Names: ------------------------------------------- " << std::endl;
     std::copy(tip_frames_.begin(), tip_frames_.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
     std::cout << std::endl;
-
-    std::cout << "Used to Expect: ----------------" << std::endl;
-    std::cout << " - LARM_LINK6 " << std::endl;
-    std::cout << " - RARM_LINK6 " << std::endl;
   }
 
   // Copy joint names and limits
@@ -214,8 +211,9 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   fk_group_info_.link_names = joint_model_group_->getLinkModelNames();
 
   // DEBUG
-  std::cout << "Total link names: " << std::endl;
+  std::cout << "Tip link names: ----------------------------" << std::endl;
   std::copy(ik_group_info_.link_names.begin(), ik_group_info_.link_names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+  std::cout << std::endl;
 
   // Populate the joint limits
   joint_min_.resize(ik_group_info_.limits.size());
@@ -252,7 +250,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // maximum iterations for the svd calculation, default: 150
   int maxiter=150;
   // alpha the null-space velocity gain
-  double alpha = 0.1;
+  double alpha = 0.01;
 
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
@@ -467,11 +465,10 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       total_iterations += counter;
       ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
 
-      if (false || verbose_)
+      if (true || verbose_)
       {
         robot_state_->setJointGroupPositions(joint_model_group_, solution);
         visual_tools_->publishRobotState(robot_state_);
-        std::cout << "publishing! " << std::endl;
         ros::Duration(0.1).sleep();
       }
 
@@ -548,7 +545,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
 
     // Visualize progress
-    if (false && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 100 == 0)
+    if (true && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 1 == 0)
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
@@ -745,20 +742,9 @@ bool WholeBodyKinematicsPlugin::getPositionFK(const std::vector<std::string> &li
 const bool WholeBodyKinematicsPlugin::supportsGroup(const moveit::core::JointModelGroup *jmg,
   std::string* error_text_out) const
 {
-  if (jmg->isChain())
-  {
-    if(error_text_out)
-    {
-      *error_text_out = "This plugin only supports joint groups which are not chains";
-    }
-    return false;
-  }
-
   return true;
 }
 
 
 } // namespace
 
-//PLUGINLIB_EXPORT_CLASS(whole_body_kinematics_plugin::WholeBodyKinematicsPlugin,
-//  kinematics::KinematicsBase);
