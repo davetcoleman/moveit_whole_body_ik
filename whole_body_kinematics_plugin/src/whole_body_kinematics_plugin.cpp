@@ -263,7 +263,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
-  ik_solver_vel_.reset(new KDL::IkSolverVel_pinv_nso(tip_frames.size(), dimension_, joint_min_, joint_max_,
+  ik_solver_vel_.reset(new IkSolverPinverse(tip_frames.size(), dimension_, joint_min_, joint_max_,
       weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
 
   ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
@@ -625,7 +625,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel_->CartToJnt(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_, ctj_data_->prev_H_);
+    ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_, ctj_data_->prev_H_);
 
     // See velocities
     if (verbose_)

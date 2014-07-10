@@ -1,33 +1,50 @@
-// Copyright  (C)  2007  Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
+/*********************************************************************
+ * Software License Agreement (BSD License)
+ *
+ *  Copyright (c) 2014, JSK, The University of Tokyo.
+ *  All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted provided that the following conditions
+ *  are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above
+ *     copyright notice, this list of conditions and the following
+ *     disclaimer in the documentation and/or other materials provided
+ *     with the distribution.
+ *   * Neither the name of the JSK, The University of Tokyo nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ *********************************************************************/
 
-// Version: 1.0
-// Author: Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
-// Maintainer: Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
-// URL: http://www.orocos.org/kdl
+/* Author: Dave Coleman
+           Based on ik solver code from Ruben Smits <ruben dot smits at mech dot kuleuven dot be>
+*/
 
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-
-#include <moveit/whole_body_kinematics_plugin/kdl/ik_solver_vel_pinv_nso.hpp> // customized ik generalize pseudo inverse
+#include <moveit/whole_body_kinematics_plugin/ik_solver_pinverse.h>
 #include <moveit/whole_body_kinematics_plugin/MatrixSolvers.h> // SVD solver
 #include <iostream> // TODO remove
 #include <boost/format.hpp>
 
-namespace KDL
+namespace whole_body_kinematics_plugin
 {
 
-IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
+IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
   JntArray _weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double _alpha, bool _verbose)
   :
   // Load the jacobian to have #joint ROWS x #tips COLS
@@ -83,7 +100,7 @@ IkSolverVel_pinv_nso::IkSolverVel_pinv_nso(int _num_tips, int _num_joints, JntAr
  * \param qdot_out - velocity (delta q) - change in joint values
  * \param prev_H - contains the previous performance criterion
  7 */
-int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H)
+int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H)
 {
   // weights:
   bool use_wln = false;
@@ -326,7 +343,7 @@ int IkSolverVel_pinv_nso::CartToJnt(const JntArray& q_in, const JntArray& xdot_i
   return 1;
 }
 
-bool IkSolverVel_pinv_nso::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H)
+bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H)
 {
   double gradientH;
 
@@ -397,13 +414,13 @@ bool IkSolverVel_pinv_nso::weightedLeastNorm(const JntArray& q_in, Jacobian2d& j
   return true;
 }
 
-int IkSolverVel_pinv_nso::setWeights(const JntArray & _weights)
+int IkSolverPinverse::setWeights(const JntArray & _weights)
 {
   weights = _weights;
   return 0;
 }
 
-int IkSolverVel_pinv_nso::setAllWeights(const double &weight)
+int IkSolverPinverse::setAllWeights(const double &weight)
 {
   for(unsigned int i=0; i < weights.rows(); i++)
     weights(i) = weight;
@@ -411,13 +428,13 @@ int IkSolverVel_pinv_nso::setAllWeights(const double &weight)
   return 0;
 }
 
-int IkSolverVel_pinv_nso::setAlpha(const double _alpha)
+int IkSolverPinverse::setAlpha(const double _alpha)
 {
   alpha = _alpha;
   return 0;
 }
 
-void IkSolverVel_pinv_nso::print(Eigen::MatrixXd &data) const
+void IkSolverPinverse::print(Eigen::MatrixXd &data) const
 {
   std::cout << "------------ " << data.rows() << " rows by " << data.cols() << " cols --------------- " << std::endl;
   std::cout << "[" << std::endl;
@@ -448,7 +465,7 @@ void IkSolverVel_pinv_nso::print(Eigen::MatrixXd &data) const
 }
 
 
-void IkSolverVel_pinv_nso::print(Eigen::VectorXd &data) const
+void IkSolverPinverse::print(Eigen::VectorXd &data) const
 {
   std::cout << "========= " << data.rows() << "x Joint Array =======" << std::endl;
   for (std::size_t i = 0; i < data.rows(); ++i)
@@ -460,89 +477,3 @@ void IkSolverVel_pinv_nso::print(Eigen::VectorXd &data) const
 
 
 } // namespace
-
-
-
-
-  // Now onto NULL space ==========================================================
-  /*
-  // Create weighted position error vector
-  for(i = 0; i < jacobian.columns(); i++)
-  {
-  // Original Criterion:
-  // A. Liegeois. Automatic supervisory control of the configuration and behavior of multibody mechnisms
-  if (false)
-  {
-  H(i) = (1/jacobian.columns()) * weights(i)*(joint_mid(i) - q_in(i));
-  }
-  // Liegeois paper on GPM
-  // the first one from A Weighted Least-Norm Solution Based Scheme for Avoiding Joint Limits for Redundant Joint Manipilators
-  else if (false)
-  {
-  // Calculate H(q)
-  component = ( q_in(i) - joint_mid(i) ) / ( joint_mid(i) - joint_max(i) );
-  H(i) = (component*component) / jacobian.columns();
-  }
-  // Zghal et. all performance criterion
-  // the better one from A Weighted Least-Norm Solution Based Scheme for Avoiding Joint Limits for Redundant Joint Manipilators
-  else if (true)
-  {
-  // H(q) = 1/4 * (maxaa - min)^2 / [ (max - theta)(theta-min) ]
-  H(i) = 0.25 * joint_constant(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
-  }
-  else
-  {
-
-
-  }
-  }
-
-  //Vtn*H
-  // temp2 is a vector the length of our redudant dofs (length = num_joints - 6*num_eefs)
-  // temp2 = V * H
-  for (i = jacobian.rows() + 1; i < jacobian.columns(); i++)
-  {
-  tmp2(i-(jacobian.rows()+1)) = 0.0;
-  for (j = 0; j < jacobian.columns(); j++)
-  {
-  tmp2(i-(jacobian.rows()+1)) += V[j](i) * H(j);
-  }
-  }
-
-  // Add the velocity of the null space redudancy to our qdot_out
-  // qdot_out = qdot_out + alpha*temp2
-  bool show_null_space = false || verbose;
-  if (show_null_space)
-  std::cout << "Null space velocity: ";
-
-  for (i = 0; i < jacobian.columns(); i++)
-  {
-  sum = 0.0;
-  for (j = jacobian.rows() + 1; j < jacobian.columns(); j++)
-  {
-  sum += V[i](j)*tmp2(j);
-  }
-
-  if (show_null_space)
-  std::cout << alpha*sum << "  ";
-
-  // Apply to velocity output
-  qdot_out(i) += alpha*sum;
-  }
-  if (show_null_space)
-  std::cout << std::endl;
-
-
-  // Debug
-  if (verbose)
-  {
-  std::cout << "Joint Velocity: " << std::endl;
-  for (std::size_t i = 0; i < qdot_out.rows(); ++i)
-  {
-  std::cout << "Joint " << i << ": " << qdot_out(i) << std::endl;
-  }
-  }
-  */
-
-  //return the return value of the svd decomposition
-  //  return ret;

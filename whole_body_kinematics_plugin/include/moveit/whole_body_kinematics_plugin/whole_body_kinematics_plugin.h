@@ -54,12 +54,12 @@
 
 // KDL
 #include "kdl/jacobian.hpp" // load this here so that it overrides the version from kdl_urdf_parser
-#include "kdl/ik_solver_vel_pinv_nso.hpp" // customized ik generalize pseudo inverse
 #include "kdl/frames.hpp"
 #include "kdl/jntarray.hpp"
 
 // This pkg
 #include <moveit/whole_body_kinematics_plugin/jacobian_generator.h>
+#include <moveit/whole_body_kinematics_plugin/ik_solver_pinverse.h>
 
 // MoveIt!
 #include <moveit/kinematics_base/kinematics_base.h>
@@ -376,8 +376,7 @@ private:
   moveit_visual_tools::VisualToolsPtr visual_tools_;
 
   // Velocity Pseudo Inverse Solver
-  typedef boost::shared_ptr<KDL::IkSolverVel_pinv_nso> IkSolverVelPinvNsoPtr;
-  IkSolverVelPinvNsoPtr ik_solver_vel_;
+  IkSolverPinversePtr ik_solver_vel_;
   JacobianGeneratorPtr jacobian_generator_;
 
   // Variables for use in cartesionToJoint() ------------------------

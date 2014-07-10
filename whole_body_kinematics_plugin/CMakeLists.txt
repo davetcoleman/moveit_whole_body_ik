@@ -10,7 +10,8 @@ target_link_libraries(${MOVEIT_LIB_NAME}_solver ${catkin_LIBRARIES} ${LAPACK_LIB
 add_library(${MOVEIT_LIB_NAME} 
   src/whole_body_kinematics_plugin.cpp 
   src/jacobian_generator.cpp
-  src/kdl/ik_solver_vel_pinv_nso.cpp
+  src/ik_solver_pinverse.cpp
+  # KDL components
   src/kdl/chain.cpp
   src/kdl/frames.cpp
   src/kdl/jacobian.cpp
