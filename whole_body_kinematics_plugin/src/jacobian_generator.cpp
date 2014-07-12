@@ -56,7 +56,7 @@ JacobianGenerator::~JacobianGenerator()
 {
 }
 
-bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model, 
+bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
   const std::vector<std::string>& tip_frames, const robot_model::JointModelGroup *jmg)
 {
   // Note: this code assumes your jmg (joint model group) is in this order:
@@ -87,10 +87,36 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
   if (jmg->isChain())
   {
     // This is the easy version
-    
-    // Add chains that do not share any common links (i.e. legs)    
-    int temp1 = 0, temp2 = 0;
-    addChain(jmg, temp1, temp2);
+
+    // HACK TO COMPARE WITH JSK EUSLISP VERSION
+    if (false)
+    {
+      const robot_model::JointModelGroup *torso_and_arm = robot_model->getJointModelGroup("left_arm_torso");
+
+      // Create the pure chain group
+      IKChainGroup ik_group(torso_and_arm);
+
+      // Set the number of unlocked joints
+      ik_group.num_unlocked_joints_ = 7;
+
+      // Choose where the coordinates will go
+      ik_group.jacobian_coords_.first = 0;
+      ik_group.jacobian_coords_.second = 0;
+
+      // Lock the torso
+      ik_group.locked_joints_[0] = true;
+      ik_group.locked_joints_[1] = true;
+
+      // This new_group is a pure, regular kinematic chain (no shared joints)
+      ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
+      chains_.push_back( ik_group );
+    }
+    else
+    {
+      // Add chains that do not share any common links (i.e. legs)
+      int temp1 = 0, temp2 = 0;
+      addChain(jmg, temp1, temp2);
+    }
 
     // Manually set this value, its real purpose is for non-chain kinematic structures
     expected_dimensions = jmg->getActiveJointModels().size();
@@ -149,7 +175,7 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
   return true;
 }
 
-bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr robot_model, const std::vector<std::string>& tip_frames, 
+bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr robot_model, const std::vector<std::string>& tip_frames,
   const robot_model::JointModelGroup *jmg, int &expected_dimensions)
 {
 
@@ -164,8 +190,8 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
   {
     for (std::size_t i = 0 ; i < subgroups.size() ; ++i)
     {
-      std::cout << "Subgroup found: " << subgroups[i]->getName() << "\n  from: " 
-        << subgroups[i]->getLinkModelNames().front() << "\n  to: " <<
+      std::cout << "Subgroup found: " << subgroups[i]->getName() << "\n  from: "
+                << subgroups[i]->getLinkModelNames().front() << "\n  to: " <<
         subgroups[i]->getLinkModelNames().back() << "\n  is chain: " << subgroups[i]->isChain() << "\n  base: " <<
         subgroups[i]->getCommonRoot()->getParentLinkModel()->getName();
     }
@@ -289,7 +315,7 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
           ik_group.jacobian_coords_.second = full_jac_col_location;
 
           // Because we know there are two shared groups, we will move the next jacobian under it
-          if (group_id == 0)
+          if (group_id == 0) // TODO: make this much more durable for non-traditional humanoid cases
           {
             full_jac_row_location += NUM_DIM_EE;
           }
@@ -374,22 +400,22 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
 
 void JacobianGenerator::addChain(const robot_model::JointModelGroup *current_group, int &full_jac_row_location, int &full_jac_col_location)
 {
-    // Create the pure chain group
-    IKChainGroup ik_group(current_group);
-    // All joints should be *unlocked*, which is true by default
-    // Number of unlocked joints is set by default
+  // Create the pure chain group
+  IKChainGroup ik_group(current_group);
+  // All joints should be *unlocked*, which is true by default
+  // Number of unlocked joints is set by default
 
-    // Choose where the coordinates will go
-    ik_group.jacobian_coords_.first = full_jac_row_location;
-    ik_group.jacobian_coords_.second = full_jac_col_location;
+  // Choose where the coordinates will go
+  ik_group.jacobian_coords_.first = full_jac_row_location;
+  ik_group.jacobian_coords_.second = full_jac_col_location;
 
-    // Move to next location
-    full_jac_row_location += NUM_DIM_EE;
-    full_jac_col_location += current_group->getJointModels().size();
+  // Move to next location
+  full_jac_row_location += NUM_DIM_EE;
+  full_jac_col_location += current_group->getJointModels().size();
 
-    // This new_group is a pure, regular kinematic chain (no shared joints)
-    ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
-    chains_.push_back( ik_group );
+  // This new_group is a pure, regular kinematic chain (no shared joints)
+  ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
+  chains_.push_back( ik_group );
 }
 
 bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state, KDL::Jacobian2d& jacobian, int seg_nr)
@@ -613,8 +639,8 @@ bool JacobianGenerator::linksToJointGroup( std::vector<const robot_model::JointM
 
     if (verbose_)
     {
-      std::cout << " -- DID NOT FIND joint model group that has same first and last tips: on group " << 
-        subgroup->getName() << 
+      std::cout << " -- DID NOT FIND joint model group that has same first and last tips: on group " <<
+        subgroup->getName() <<
         " from: " <<
         subgroup->getCommonRoot()->getParentLinkModel()->getName() <<
         " to " << subgroup->getLinkModelNames().back() << std::endl;

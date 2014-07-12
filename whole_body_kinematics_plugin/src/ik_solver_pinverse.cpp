@@ -100,8 +100,10 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
  * \param qdot_out - velocity (delta q) - change in joint values
  * \param prev_H - contains the previous performance criterion
  7 */
-int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H)
+int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian,
+  JntArray& qdot_out, JntArray& prev_H, bool debug_mode)
 {
+
   // weights:
   bool use_wln = false;
   // inverse methods:
@@ -109,7 +111,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   bool use_kdl = false;
   bool use_kdl2 = true;
   // null space:
-  bool use_gpm = true; // not with use_kdl
+  bool use_gpm = false; // not with use_kdl
 
   unsigned int i,j;
   double sum;
@@ -119,7 +121,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
 
   // Find the Weighted Least Norm Jacobian
   if (use_wln)
-    weightedLeastNorm(q_in, jacobian, prev_H);
+    weightedLeastNorm(q_in, jacobian, prev_H, debug_mode);
 
   // Method 1: Calculate the entire pseudo inverse as found in HRP --------------------------
   if (use_psm)
@@ -292,6 +294,40 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     }
   }
 
+  if (debug_mode)
+  {
+
+    // Show jacobian
+    std::cout << "J     : ";
+    for (i = 0; i < jacobian.rows(); ++i)
+    {
+      for (j = 0; j < jacobian.columns(); ++j)
+      {
+        std::cout << boost::format("%10.4f") % jacobian(i,j);
+      }
+      std::cout << std::endl;
+
+      // close the whole matrix unless we are on last value
+      if ( !(j == jacobian.columns() && i == jacobian.rows() - 1) )
+        std::cout << "        ";
+    }
+
+    // Show pseudo-inverse, transposed
+    std::cout << "J#t   : ";
+    for (j = 0; j < pinverse_.cols(); ++j)
+    {
+      for (i = 0; i < pinverse_.rows(); ++i)
+      {
+        std::cout << boost::format("%10.4f") % pinverse_(i,j);
+      }
+      std::cout << std::endl;
+
+      // close the whole matrix unless we are on last value
+      if ( !(j == pinverse_.cols() - 1 && i == pinverse_.rows()) )
+        std::cout << "        ";
+    }
+  }
+
   // Gradient Projection Method using Null Space ----------------------------------------------
 
   if (use_gpm)
@@ -317,7 +353,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       */
     }
 
-    bool this_verbose = true;
+    bool this_verbose = false;
     if (this_verbose)
     {
       std::cout << std::endl  << "Identity " << std::endl;
@@ -329,28 +365,30 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       std::cout << std::endl  << "H criterion: " << std::endl;
       H.print();
       std::cout << std::endl  << "Alpha: " << alpha_ << std::endl;
+
+
+      std::cout << "J^+ * J" << std::endl;
+      tmp3_ = (pinverse_ * jacobian.data);
+      print(tmp3_);
+
+      std::cout << "I - J^+ * J" << std::endl;
+      tmp3_ = (identity_ - pinverse_ * jacobian.data);
+      print(tmp3_);
+
+      // temp H
+      /*
+        Eigen::VectorXd tempH;
+        tempH.resize(H.data.rows(),1);
+        tempH[3] = 1;
+        std::cout << "H tmp " << std::endl;
+        print(tempH);
+      */
+
+      std::cout << "* H " << std::endl;
+      tmp3_ = (identity_ - pinverse_ * jacobian.data) * H.data;
+      print(tmp3_);
+
     }
-
-    std::cout << "J^+ * J" << std::endl;
-    tmp3_ = (pinverse_ * jacobian.data);
-    print(tmp3_);
-
-    std::cout << "I - J^+ * J" << std::endl;
-    tmp3_ = (identity_ - pinverse_ * jacobian.data);
-    print(tmp3_);
-
-    // temp H
-    /*
-      Eigen::VectorXd tempH;
-      tempH.resize(H.data.rows(),1);
-      tempH[3] = 1;
-      std::cout << "H tmp " << std::endl;
-      print(tempH);
-    */
-
-    std::cout << "* H " << std::endl;
-    tmp3_ = (identity_ - pinverse_ * jacobian.data) * H.data;
-    print(tmp3_);
 
     // qdot += k(I - J^(+)*J)
     tmp3_ = alpha_ * (identity_ - pinverse_ * jacobian.data) * H.data;  // TODO is this jacobian already weighted?
@@ -367,12 +405,11 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     qdot_out.data += tmp3_;
 
   }
-  exit(0);
 
   return 1;
 }
 
-bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H)
+bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H, bool debug_mode)
 {
   double gradientH;
 
@@ -424,10 +461,13 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
     prev_H(i) = gradientH;
   }
 
-  if (verbose_ || false)
+  if (debug_mode)
   {
-    std::cout << "Weighing Matrix: " << std::endl;
-    W.print();
+    std::cout << "weight:  ";
+    for (std::size_t i = 0; i < W.rows(); ++i)
+    {
+      std::cout << boost::format("%10.4f") % W(i);
+    }
   }
 
   // Apply weighting matrix to jacobian

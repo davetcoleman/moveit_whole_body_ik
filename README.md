@@ -22,6 +22,15 @@ whole_body_fixed:
     - RLEG_LINK5
 ```
 
+### Optional Parameters
+
+```
+/kinematics_solver_max_solver_iterations   # iterations for newton raphson method
+/kinematics_solver_epsilon                 # error tolerance between desired pose and current pose for termination condition
+/kinematics_solver_verbose                 # show lots of console output 
+/kinematics_solver_debug_mode              # similar to verbose but only shows matrix-related math debug output
+```
+
 ## SRDF
 
  - You must define planning groups for each *tip* listed in the ''ik_links'' section, above, that goes from ``BASE_LINK -> TIP_LINK``
@@ -44,3 +53,4 @@ if its not, im not sure what will happen
 It also assumes your l & r arms each share x number of torso joints, and those are the only shared joints on the whole robot
   
 Assumes all planning groups have their root at the base_link (root link)
+

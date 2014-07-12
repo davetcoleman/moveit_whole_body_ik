@@ -60,7 +60,8 @@ namespace whole_body_kinematics_plugin
 {
 
 WholeBodyKinematicsPlugin::WholeBodyKinematicsPlugin()
-  : verbose_(false),
+  : verbose_(false), // set this via rosparam
+    debug_mode_(false), // set this via rosparam
     nh_("~"),
     joint_limit_offset_(0.001)
 {}
@@ -112,7 +113,18 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   const std::vector<std::string>& tip_frames,
   double search_discretization)
 {
+
+  // Call KinematicsBase parent class
   setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
+  //ROS_WARN_STREAM_NAMED("temp","euslisp hack in place");
+  //setValues(robot_description, group_name, "BODY", tip_frames, search_discretization);  // HACK FOR EUSLISP TODO REMOVE
+
+  // Get solver parameters from param server
+  ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");    
+  nh_.param(group_name_ + "/kinematics_solver_max_solver_iterations", max_solver_iterations_, 500);
+  nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
+  nh_.param(group_name_ + "/kinematics_solver_verbose", verbose_, false);
+  nh_.param(group_name_ + "/kinematics_solver_debug_mode", debug_mode_, false);
 
   // Load URDF and SRDF --------------------------------------------------------------------
   rdf_loader::RDFLoader rdf_loader(robot_description_);
@@ -210,11 +222,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
   fk_group_info_.link_names = joint_model_group_->getLinkModelNames();
 
-  // DEBUG
-  std::cout << "Tip link names: ----------------------------" << std::endl;
-  std::copy(ik_group_info_.link_names.begin(), ik_group_info_.link_names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
-  std::cout << std::endl;
-
   // Populate the joint limits
   joint_min_.resize(ik_group_info_.limits.size());
   joint_max_.resize(ik_group_info_.limits.size());
@@ -223,10 +230,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     joint_min_(i) = ik_group_info_.limits[i].min_position;
     joint_max_(i) = ik_group_info_.limits[i].max_position;
   }
-
-  // Get Solver Parameters from param server
-  nh_.param("max_solver_iterations", max_solver_iterations_, 500);
-  nh_.param("epsilon", epsilon_, 1e-5);
 
   // Setup the joint state groups that we need
   robot_state_.reset(new robot_state::RobotState(robot_model_));
@@ -310,13 +313,6 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
 
   ros::WallTime n1 = ros::WallTime::now();
 
-  // Check if ROS is ok
-  if (!ros::ok())
-  {
-    ROS_ERROR_STREAM_NAMED("cartesianToJoint","ROS requested shutdown");
-    return -1;
-  }
-
   // Optimization debug functionality
   if (false)
   {
@@ -337,7 +333,8 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // Check consistency limits
   if(!consistency_limits.empty() && consistency_limits.size() != dimension_)
   {
-    ROS_ERROR_STREAM_NAMED("whole_body_ik","Consistency limits be empty or must have size " << dimension_ << " instead of size " << consistency_limits.size());
+    ROS_ERROR_STREAM_NAMED("whole_body_ik","Consistency limits be empty or must have size " << dimension_
+      << " instead of size " << consistency_limits.size());
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
   }
@@ -428,7 +425,14 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     }
 
     // Solve
-    int ik_valid = cartesionToJoint(jnt_pos_in, kdl_poses, jnt_pos_out);
+    int ik_valid = newtonRaphsonIterator(jnt_pos_in, kdl_poses, jnt_pos_out);
+
+    // Check if ROS is ok
+    if (ik_valid == -5)
+    {
+      ROS_ERROR_STREAM_NAMED("whole_body_ik","ROS requested shutdown");
+      return -1;
+    }
 
     // Check solution
     if( !consistency_limits.empty() &&
@@ -495,7 +499,7 @@ void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k)
 
 /* \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
  *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account. */
-int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out) const
+int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out) const
 {
   // First solution guess is the seed state
   q_out = q_init;
@@ -505,44 +509,48 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
   // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
-  
+
   // Set the performance criterion back to zero
+  // TODO is this a valid assumption?
   for (std::size_t i = 0; i <   ctj_data_->prev_H_.rows(); ++i)
   {
-    ctj_data_->prev_H_(i) = 0.0;    
+    ctj_data_->prev_H_(i) = 0.0;
   }
 
   // Start main loop
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
-
-    if (verbose_)
-      ROS_WARN_STREAM_NAMED("cartesionToJoint","Starting solver iteration " << solver_iteration << " of " << max_solver_iterations_ << " =================");
+    // To match euslisp's debug mode
+    if (debug_mode_)
+    {
+      std::cout << "------------------------------------------------------------" << std::endl;
+      std::cout << "loop:   " << solver_iteration << " of " << max_solver_iterations_ << std::endl;
+      std::cout << "union-link-list:  (";
+      for (std::size_t i = 0; i < ik_group_info_.link_names.size(); ++i)
+      {
+        std::cout << ik_group_info_.link_names[i] << " ";
+      }
+      std::cout << ")" << std::endl;
+      std::cout << "move-target: ?? " << std::endl;
+    }
 
     if (!ros::ok())
     {
-      ROS_ERROR_STREAM_NAMED("cartesianToJoint","ROS requested shutdown");
-      return -1;
+      ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","ROS requested shutdown");
+      return -5;
     }
 
     all_poses_valid = true;
 
-    // Convert to vector of doubles
+    // Convert to vector of doubles // TODO is there a better way
     for (std::size_t i = 0; i < q_out.rows(); ++i)
       ctj_data_->current_joint_values_[i] = q_out(i);
 
-    if (verbose_)
-    {
-      std::cout << "Curr JValues: " ;
-      //std::copy(ctj_data_->current_joint_values_.begin(), ctj_data_->current_joint_values_.end(), std::ostream_iterator<double>(std::cout, ", "));
-      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
-      {
-        std::cout << boost::format("%10.4f") % ctj_data_->current_joint_values_[i];
-      }
-      std::cout << std::endl;
-    }
+    // Send to MoveIt's robot_state
     robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
+    ROS_WARN_STREAM_NAMED("temp","switch and benchmark this (and remove for loop above)");
+    //robot_state_->setJointGroupPositions(joint_model_group_, q_out.data);
 
     // Visualize progress
     if (true && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 1 == 0)
@@ -567,6 +575,9 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       // Calculate the difference between our desired pose and current pose
       ctj_data_->delta_twist_ = diff(ctj_data_->current_pose_, kdl_poses[pose_id]);   // v_in = actual - target
 
+      // Transform delta_twist to end effector coordinate system
+      //kdl_poses[pose_id]; //TODO
+
       // Check if the difference between our desired pose and current pose is within epsilon tolerance
       if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), epsilon_))
         all_poses_valid = false;
@@ -580,25 +591,67 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
     }
 
     // See twist delta
-    if (verbose_)
+    if (debug_mode_)
     {
-      std::cout << "Twist:   ";
-      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
+      // Positional Velocity
+      std::cout << "vel-pos : ";
+      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); i += 6) // skip through every eeef
       {
-        std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(i);
+        for (std::size_t j = 0; j < 3; ++j)
+        {
+          std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(j+i);
+        }
       }
       std::cout << std::endl;
+
+      // Rotational Velocity
+      std::cout << "vel-rot : ";
+      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); i += 6) // skip through every eeef
+      {
+        for (std::size_t j = 3; j < 6; ++j)
+        {
+          std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(j+i);
+        }
+      }
+      std::cout << std::endl;
+
+      // Angle
+      std::cout << "angle : " ;
+      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+      {
+        std::cout << boost::format("%10.3f") % (ctj_data_->current_joint_values_[i] * 57.2957795);
+      }
+      std::cout << std::endl;
+
+      // Min Joint Value
+      std::cout << " min  : " ;
+      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+      {
+        std::cout << boost::format("%10.3f") % (joint_min_(i) * 57.2957795);
+      }
+      std::cout << std::endl;
+
+      // Max Joint Value
+      std::cout << " max  : " ;
+      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+      {
+        std::cout << boost::format("%10.3f") % (joint_max_(i) * 57.2957795);
+      }
+      std::cout << std::endl;
+
+      // User Weight
+      std::cout << "usrwei:    " << std::endl;
     }
 
-    // Check if we are donep
+    // Check if we are done
     if (all_poses_valid)
     {
       if (verbose_)
-        ROS_DEBUG_STREAM_NAMED("cartesionToJoint","All of our end effectors are withing epsilon tolerance of goal location");
+        ROS_DEBUG_STREAM_NAMED("newtonRaphsonIterator","All of our end effectors are withing epsilon tolerance of goal location");
 
       if (debug_would_have_stopped)
       {
-        ROS_ERROR_STREAM_NAMED("temp","FOUND AN INSTANCE WERE WE WOULD HAVE GIVEN UP TOO EARLY!");
+        ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","FOUND AN INSTANCE WERE WE WOULD HAVE GIVEN UP TOO EARLY!");
         exit(-1);
       }
 
@@ -610,7 +663,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
         std::cout << std::endl;
       }
 
-      return 0;
+      return 1;
     }
 
     //Calculate the jacobian "jac" the current joint positions in robot_state
@@ -622,7 +675,11 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_, ctj_data_->prev_H_);
+    if (ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_) != 1)
+    {
+      ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Error in ik solver pinverse");
+      return -1;
+    }
 
     // See velocities
     if (verbose_)
@@ -661,7 +718,7 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       {
         if (verbose_)
         {
-          ROS_ERROR_STREAM_NAMED("temp","Giving up because no change detected");
+          ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Giving up because no change detected");
         }
         debug_would_have_stopped = true;
         break; // disable this to keep going
@@ -690,20 +747,17 @@ int WholeBodyKinematicsPlugin::cartesionToJoint(const KDL::JntArray& q_init, con
       if (q_out(j) < joint_min_(j))
       {
         if (verbose_)
-          ROS_ERROR_STREAM_NAMED("cartesionToJoint","Min joint limit hit for joint " << j);
+          ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Min joint limit hit for joint " << j);
         q_out(j) = joint_min_(j) + joint_limit_offset_;
       }
       else if (q_out(j) > joint_max_(j))
       {
         if (verbose_)
-          ROS_ERROR_STREAM_NAMED("cartesionToJoint","Max joint limit hit for joint " << j);
+          ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Max joint limit hit for joint " << j);
         q_out(j) = joint_max_(j) - joint_limit_offset_;
       }
     }
 
-    // Loop
-    //ROS_INFO_STREAM_NAMED("temp","temp quit early");
-    //exit(-1);
   }
 
   // We never found a close enough solution

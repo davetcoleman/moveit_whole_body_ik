@@ -80,9 +80,10 @@ public:
 
   ~IkSolverPinverse() {};
 
-  int cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, JntArray& qdot_out, JntArray& prev_H);
+  int cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, 
+    JntArray& qdot_out, JntArray& prev_H, bool debug_mode);
 
-  bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H);
+  bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H, bool debug_mode);
 
   /**
    *Set joint weights for optimization criterion
