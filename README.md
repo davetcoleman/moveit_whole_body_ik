@@ -25,10 +25,11 @@ whole_body_fixed:
 ### Optional Parameters
 
 ```
-/kinematics_solver_max_solver_iterations   # iterations for newton raphson method
-/kinematics_solver_epsilon                 # error tolerance between desired pose and current pose for termination condition
-/kinematics_solver_verbose                 # show lots of console output 
-/kinematics_solver_debug_mode              # similar to verbose but only shows matrix-related math debug output
+kinematics_solver_max_solver_iterations:   # iterations for newton raphson method
+kinematics_solver_epsilon:                 # error tolerance between desired pose and current pose for termination condition
+kinematics_solver_verbose:                 # show lots of console output 
+kinematics_solver_debug_mode:              # similar to verbose but only shows matrix-related math debug output
+kinematics_solver_visualize_search:        # publish to rviz every step of the solver
 ```
 
 ## SRDF

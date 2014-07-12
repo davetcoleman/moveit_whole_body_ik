@@ -372,6 +372,7 @@ private:
 
   bool verbose_; // show debug info
   bool debug_mode_; // math debug info, similar to euslisp's version
+  bool visualize_search_; // publish to rviz every step of the solver
 
   // For visualizing things in rviz
   moveit_visual_tools::VisualToolsPtr visual_tools_;
@@ -388,7 +389,6 @@ private:
         qdot_cache_(dimension),
         prev_H_(dimension),
         delta_twists_( num_poses * 6 ),
-        current_joint_values_(dimension),
         jacobian_(dimension, num_poses * 6) // TODO fix
     {}
     KDL::Twist delta_twist_; // velocity and rotational velocity
@@ -398,7 +398,6 @@ private:
     KDL::JntArray prev_H_; // track the change in performance criterion
     KDL::Frame current_pose_;
     KDL::Jacobian2d jacobian_;
-    std::vector<double> current_joint_values_; // for visualizing. perhaps remove?
   };
   typedef boost::shared_ptr<CartesionToJointData> CartesionToJointDataPtr;
 

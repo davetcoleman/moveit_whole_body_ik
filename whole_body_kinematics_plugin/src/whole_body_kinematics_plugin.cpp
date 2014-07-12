@@ -115,9 +115,9 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 {
 
   // Call KinematicsBase parent class
-  setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
-  //ROS_WARN_STREAM_NAMED("temp","euslisp hack in place");
-  //setValues(robot_description, group_name, "BODY", tip_frames, search_discretization);  // HACK FOR EUSLISP TODO REMOVE
+  //setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
+  ROS_WARN_STREAM_NAMED("temp","euslisp hack in place");
+  setValues(robot_description, group_name, "BODY", tip_frames, search_discretization);  // HACK FOR EUSLISP TODO REMOVE
 
   // Get solver parameters from param server
   ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");    
@@ -125,6 +125,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
   nh_.param(group_name_ + "/kinematics_solver_verbose", verbose_, false);
   nh_.param(group_name_ + "/kinematics_solver_debug_mode", debug_mode_, false);
+  nh_.param(group_name_ + "/kinematics_solver_visualize_search", visualize_search_, false);
 
   // Load URDF and SRDF --------------------------------------------------------------------
   rdf_loader::RDFLoader rdf_loader(robot_description_);
@@ -236,8 +237,11 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   robot_state_->setToDefaultValues();
 
   // Load the Robot Viz Tools for publishing to Rviz
-  visual_tools_.reset(new moveit_visual_tools::VisualTools("/odom","/hrp2_visual_markers", robot_model_));
-  visual_tools_->loadRobotStatePub("/moveit_whole_body_ik");
+  if (visualize_search_)
+  {
+    visual_tools_.reset(new moveit_visual_tools::VisualTools("/odom","/hrp2_visual_markers", robot_model_));
+    visual_tools_->loadRobotStatePub("/moveit_whole_body_ik");
+  }
 
   // Load the datastructures into memory needed for solving
   ctj_data_.reset(new CartesionToJointData(dimension_, tip_frames.size()));
@@ -469,7 +473,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       total_iterations += counter;
       ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
 
-      if (true || verbose_)
+      if (visualize_search_)
       {
         robot_state_->setJointGroupPositions(joint_model_group_, solution);
         visual_tools_->publishRobotState(robot_state_);
@@ -543,17 +547,11 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 
     all_poses_valid = true;
 
-    // Convert to vector of doubles // TODO is there a better way
-    for (std::size_t i = 0; i < q_out.rows(); ++i)
-      ctj_data_->current_joint_values_[i] = q_out(i);
-
     // Send to MoveIt's robot_state
-    robot_state_->setJointGroupPositions(joint_model_group_, ctj_data_->current_joint_values_);
-    ROS_WARN_STREAM_NAMED("temp","switch and benchmark this (and remove for loop above)");
-    //robot_state_->setJointGroupPositions(joint_model_group_, q_out.data);
+    robot_state_->setJointGroupPositions(joint_model_group_, q_out.data);
 
     // Visualize progress
-    if (true && solver_iteration % 1 == 0 || verbose_ && solver_iteration % 1 == 0)
+    if (visualize_search_)
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
@@ -566,7 +564,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       // Do forward kinematics to get new EE pose location
       Eigen::Affine3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
 
-      // Bring the pose to the frame of the IK solver
+      // Bring the pose to the frame of the IK solver TODO this isn't necessary if base frame is same as global link transform frame
       robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
 
       // Convert Eigen::Affine3d to KDL::Frame
@@ -575,8 +573,18 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       // Calculate the difference between our desired pose and current pose
       ctj_data_->delta_twist_ = diff(ctj_data_->current_pose_, kdl_poses[pose_id]);   // v_in = actual - target
 
+      //std::cout << "pose " << eef_pose.translation() << std::endl;
+      //std::cout << "pose " << eef_pose.rotation() << std::endl;
+
+      /*
+      double dt = 1;
+
+      (ctj_data_->current_pose_.p - kdl_poses[pose_id].p) / dt;
+      */
+
       // Transform delta_twist to end effector coordinate system
-      //kdl_poses[pose_id]; //TODO
+      //ctj_data_->delta_twist_ = kdl_poses[pose_id].inverse() * ctj_data_->delta_twist_;
+
 
       // Check if the difference between our desired pose and current pose is within epsilon tolerance
       if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), epsilon_))
@@ -617,15 +625,15 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 
       // Angle
       std::cout << "angle : " ;
-      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.3f") % (ctj_data_->current_joint_values_[i] * 57.2957795);
+        std::cout << boost::format("%10.3f") % (q_out(i) * 57.2957795);
       }
       std::cout << std::endl;
 
       // Min Joint Value
       std::cout << " min  : " ;
-      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         std::cout << boost::format("%10.3f") % (joint_min_(i) * 57.2957795);
       }
@@ -633,7 +641,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 
       // Max Joint Value
       std::cout << " max  : " ;
-      for (std::size_t i = 0; i < ctj_data_->current_joint_values_.size(); ++i)
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         std::cout << boost::format("%10.3f") % (joint_max_(i) * 57.2957795);
       }

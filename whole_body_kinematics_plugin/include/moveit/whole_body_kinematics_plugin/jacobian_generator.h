@@ -81,6 +81,12 @@ struct IKChainGroup
       locked_joints_(jmg->getJointModels().size(), false),
       num_unlocked_joints_(jmg->getJointModels().size())
   {}
+
+  const robot_model::LinkModel* getTipLink()
+  {
+    return jmg_->getLinkModels().back();
+  }
+
   // Mapping from subjacobians to their location in the combined jacobian
   MatrixCoords jacobian_coords_;  // row, col
 
@@ -160,6 +166,9 @@ public:
 
   void lockJointsAfter(IKChainGroup &ik_group, int lock_after_id);
 
+  bool getJacobian(const robot_state::RobotStatePtr state, const robot_model::JointModelGroup *group, const robot_model::LinkModel *link,
+    const Eigen::Vector3d &reference_point_position, Eigen::MatrixXd& jacobian, int chain_id);
+
 private:
 
   KDL::Twist t_twist_tmp_; // base of new segment's twist
@@ -169,34 +178,20 @@ private:
   unsigned int nr_of_unlocked_joints_;
   bool verbose_;
 
-  /*
-  // All the chains that are combined to make a jacobian
-  std::vector<KDL::Chain> chains_;
-
-  // Mapping from subjacobians to their location in the combined jacobian
-  std::vector<MatrixCoords> jacobian_coords_;
-
-  // Mapping from subjacobians to their planning groups
-  std::vector<robot_model::JointModelGroup*> jacobian_groups_;
-
-  // Track which joints are locked
-  std::vector<LockedJoints> jacobian_locked_joints_;
-
-  // Track how many unlocked joints per chain
-  std::vector<int> num_unlocked_joints_;
-
-  // Store allocated memory for every chainsub_jacobians
-  std::vector<KDL::Jacobian2dPtr> sub_jacobians_;
-
-  // Sub joint index for every chain
-  std::vector<KDL::JntArrayPtr> sub_q_ins;
-  */
-
   // Used in generateChainJacobian
   unsigned int segment_nr_;
 
   // Store all sub jacobian data
   std::vector<IKChainGroup> chains_;
+
+
+  // MoveIt Jacobian generator variables
+  Eigen::Affine3d reference_transform_;
+  Eigen::Vector3d point_transform_;
+  Eigen::Affine3d link_transform_;
+  Eigen::Vector3d joint_axis_;
+  Eigen::Affine3d joint_transform_;
+  unsigned int joint_index_;
 
 };
 

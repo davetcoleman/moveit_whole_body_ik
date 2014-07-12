@@ -89,7 +89,7 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
     // This is the easy version
 
     // HACK TO COMPARE WITH JSK EUSLISP VERSION
-    if (false)
+    if (true)
     {
       const robot_model::JointModelGroup *torso_and_arm = robot_model->getJointModelGroup("left_arm_torso");
 
@@ -419,8 +419,9 @@ void JacobianGenerator::addChain(const robot_model::JointModelGroup *current_gro
 }
 
 bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state, KDL::Jacobian2d& jacobian, int seg_nr)
-//q_in
 {
+  bool use_kdl_jacobian = false; // if false use moveit jacobian function
+
   if (verbose_)
   {
     std::cout << "\n\n> Starting JntToJac with "<< chains_.size() << " chains --------------------------- " << std::endl;
@@ -437,7 +438,7 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
   const KDL::Chain *this_chain;
 
   if (verbose_)
-    std::cout << "\nWe have " << chains_.size() << " chains" << std::endl;
+    std::cout << "\nJacobian consists of " << chains_.size() << " chains" << std::endl;
 
   for (std::size_t chain_id = 0; chain_id < chains_.size(); ++chain_id)
   {
@@ -469,11 +470,24 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
       std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
     // ------------------------------
 
-    // Calculate this jacobian
-    if (!generateChainJacobian((*chains_[chain_id].sub_q_in_), *chains_[chain_id].sub_jacobian_.get(), seg_nr, chain_id))
+    if (use_kdl_jacobian)
     {
-      std::cout << "Failed to calculate jacobian for chain " << chain_id << std::endl;
-      return false;
+      // Calculate this jacobian
+      if (!generateChainJacobian((*chains_[chain_id].sub_q_in_), *chains_[chain_id].sub_jacobian_.get(), seg_nr, chain_id))
+      {
+        std::cout << "Failed to calculate KDL jacobian for chain " << chain_id << std::endl;
+        return false;
+      }
+    }
+    else
+    {
+      // Calculate this jacobian
+      if (!getJacobian(state, chains_[chain_id].jmg_, chains_[chain_id].getTipLink(), Eigen::Vector3d(0.0, 0.0, 0.0),
+          chains_[chain_id].sub_jacobian_->data, chain_id))
+      {
+        std::cout << "Failed to calculate MoveIt jacobian for chain " << chain_id << std::endl;
+        return false;
+      }
     }
 
     // Debug
@@ -561,11 +575,18 @@ bool JacobianGenerator::generateChainJacobian(const KDL::JntArray& q_in, KDL::Ja
   // Reset the twist
   SetToZero(t_twist_tmp_);
 
-  int j=0; // tracks which input joint value q(j) we are using
-  int k=0; // tracks which column in jacobian we are editing
+  int joint_value_index = 0; // tracks which input joint value q(j) we are using
+  int jacobian_column = 0; // tracks which column in jacobian we are editing
+
+  /*
+  // Change frame of reference?
+  Eigen::Affine3d reference_transform = state->getGlobalLinkTransform("LARM_LINK6");
+  KDL::Vector ee_transform;
+  ee_transform;
+  */
 
   // Loop through every segment in chain (until the stop index)
-  for (unsigned int joint_id=0; joint_id < segment_nr_; joint_id++)
+  for (unsigned int joint_id = 0; joint_id < segment_nr_; joint_id++)
   {
     //Calculate new Frame_base_ee
     if (chains_[chain_id].kdl_chain_.getSegment(joint_id).getJoint().getType() != KDL::Joint::None) // is a regular joint
@@ -574,12 +595,12 @@ bool JacobianGenerator::generateChainJacobian(const KDL::JntArray& q_in, KDL::Ja
         std::cout << "Chain " << chain_id << " joint " << joint_id  << " is a regular joint" <<  std::endl;
 
       //pose of the new end-point expressed in the base
-      total_frame_ = T_frame_tmp_ * chains_[chain_id].kdl_chain_.getSegment(joint_id).pose(q_in(j));
+      total_frame_ = T_frame_tmp_ * chains_[chain_id].kdl_chain_.getSegment(joint_id).pose(q_in(joint_value_index));
 
       //changing base of new segment's twist to base frame if it is not locked
-      if(!chains_[chain_id].locked_joints_[j])
+      if(!chains_[chain_id].locked_joints_[joint_value_index])
       {
-        t_twist_tmp_ = T_frame_tmp_.M * chains_[chain_id].kdl_chain_.getSegment(joint_id).twist( q_in(j), 1.0 );
+        t_twist_tmp_ = T_frame_tmp_.M * chains_[chain_id].kdl_chain_.getSegment(joint_id).twist( q_in(joint_value_index), 1.0 );
       }
     }
     else
@@ -598,14 +619,14 @@ bool JacobianGenerator::generateChainJacobian(const KDL::JntArray& q_in, KDL::Ja
     if(chains_[chain_id].kdl_chain_.getSegment(joint_id).getJoint().getType() != KDL::Joint::None)
     {
       //Only put the twist inside if it is not locked
-      if(!chains_[chain_id].locked_joints_[j])
+      if(!chains_[chain_id].locked_joints_[joint_value_index])
       {
-        jacobian.setColumn(k++, t_twist_tmp_);
+        jacobian.setColumn(jacobian_column++, t_twist_tmp_);
       }
       else if (verbose_)
         std::cout << " --> is locked " << std::endl;
 
-      j++;
+      joint_value_index++;
     }
 
     T_frame_tmp_ = total_frame_;
@@ -662,6 +683,113 @@ void JacobianGenerator::lockJointsAfter(IKChainGroup &ik_group, int lock_after_i
   }
 }
 
+bool JacobianGenerator::getJacobian(const robot_state::RobotStatePtr state, const robot_model::JointModelGroup *group, const robot_model::LinkModel *link,
+  const Eigen::Vector3d &reference_point_position, Eigen::MatrixXd& jacobian, int chain_id)
+{
+  //BOOST_VERIFY(checkLinkTransforms());
+
+  const robot_model::JointModel* root_joint_model = group->getJointModels()[0];//group->getJointRoots()[0];
+  const robot_model::LinkModel* root_link_model = root_joint_model->getParentLinkModel();
+
+  // Choose overall coordiante frame (base or end effector)
+  //reference_transform_ = root_link_model ? state->getGlobalLinkTransform(root_link_model).inverse() : Eigen::Affine3d::Identity();
+  reference_transform_ = state->getGlobalLinkTransform(link).inverse();
+
+  //rows_ = 6;
+  //columns_ = group->getVariableCount();
+  //jacobian = Eigen::MatrixXd::Zero(rows_, columns_);
+
+  link_transform_ = reference_transform_ * state->getGlobalLinkTransform(link);
+  point_transform_ = link_transform_ * reference_point_position;
+
+  /*
+    logDebug("Point from reference origin expressed in world coordinates: %f %f %f",
+    point_transform_.x(),
+    point_transform_.y(),
+    point_transform_.z());
+  */
+
+  int jacobian_column = jacobian.cols() - 1; // tracks which column in jacobian we are editing
+  int joint_value_index = group->getVariableCount() - 1; // tracks which input joint value q(j) we are using, essentially mirrors 'link' pointer but as an ID number
+
+  while (link)
+  {
+    const robot_model::JointModel *pjm = link->getParentJointModel();
+
+    /*
+      ROS_INFO("Link: %s, %f %f %f",link->getName().c_str(),
+      state->getGlobalLinkTransform(link).translation().x(),
+      state->getGlobalLinkTransform(link).translation().y(),
+      state->getGlobalLinkTransform(link).translation().z());
+      ROS_INFO("Joint: %s",pjm->getName().c_str());
+    */
+
+    bool lock_joint = chains_[chain_id].locked_joints_[joint_value_index];
+
+    if (pjm->getVariableCount() > 0)
+    {
+      joint_index_ = group->getVariableGroupIndex(pjm->getName()); // TODO no string
+
+      std::cout << "Link " << link->getName() << " has joint index " << joint_index_ << " and joint value index " << joint_value_index
+                << " and skipping is " << chains_[chain_id].locked_joints_[joint_value_index] << std::endl;
+
+      // Revolute Joints
+      if (pjm->getType() == robot_model::JointModel::REVOLUTE)
+      {
+        joint_transform_ = reference_transform_ * state->getGlobalLinkTransform(link);
+        joint_axis_ = joint_transform_.rotation() * static_cast<const robot_model::RevoluteJointModel*>(pjm)->getAxis();
+
+        // Apply to jacobian only if not locked
+        if (!lock_joint)
+        {
+          jacobian.block<3,1>(0,jacobian_column) = jacobian.block<3,1>(0,jacobian_column) + joint_axis_.cross(point_transform_ - joint_transform_.translation());
+          jacobian.block<3,1>(3,jacobian_column) = jacobian.block<3,1>(3,jacobian_column) + joint_axis_;
+        }
+      }
+      // Prismatic Joints
+      else if (pjm->getType() == robot_model::JointModel::PRISMATIC)
+      {
+        joint_transform_ = reference_transform_ * state->getGlobalLinkTransform(link);
+        joint_axis_ = joint_transform_ * static_cast<const robot_model::PrismaticJointModel*>(pjm)->getAxis();
+        // TODO place lock joint code
+        jacobian.block<3,1>(0,jacobian_column) = jacobian.block<3,1>(0,jacobian_column) + joint_axis_;
+      }
+      // Planer Joints
+      else if (pjm->getType() == robot_model::JointModel::PLANAR)
+      {
+        // TODO place lock joint code
+        joint_transform_ = reference_transform_ * state->getGlobalLinkTransform(link);
+        joint_axis_ = joint_transform_ * Eigen::Vector3d(1.0,0.0,0.0);
+        jacobian.block<3,1>(0,jacobian_column) = jacobian.block<3,1>(0,jacobian_column) + joint_axis_;
+        joint_axis_ = joint_transform_*Eigen::Vector3d(0.0,1.0,0.0);
+        jacobian.block<3,1>(0,jacobian_column+1) = jacobian.block<3,1>(0,jacobian_column+1) + joint_axis_;
+        joint_axis_ = joint_transform_*Eigen::Vector3d(0.0,0.0,1.0);
+        jacobian.block<3,1>(0,jacobian_column+2) = jacobian.block<3,1>(0,jacobian_column+2) + joint_axis_.cross(point_transform_ - joint_transform_.translation());
+        jacobian.block<3,1>(3,jacobian_column+2) = jacobian.block<3,1>(3,jacobian_column+2) + joint_axis_;
+      }
+      else
+        logError("Unknown type of joint in Jacobian computation");
+    } // if has variables
+
+    // If we've reached the end of the chain
+    if (pjm == root_joint_model)
+      break;
+
+    // Move towards root of chain
+    link = pjm->getParentLinkModel();
+
+    // Always decrement
+    joint_value_index --;
+
+    // Move down the jacobian columns only if not locked
+    if (!lock_joint)
+    {
+      jacobian_column--;
+    }
+  }
+
+  return true;
+}
 
 } // namespace
 
