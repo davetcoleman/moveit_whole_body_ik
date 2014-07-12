@@ -48,6 +48,7 @@
 #include <srdfdom/model.h>
 
 #include <moveit/rdf_loader/rdf_loader.h>
+#include <moveit/macros/console_colors.h>
 
 #include <boost/format.hpp>
 
@@ -115,9 +116,9 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 {
 
   // Call KinematicsBase parent class
-  //setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
-  ROS_WARN_STREAM_NAMED("temp","euslisp hack in place");
-  setValues(robot_description, group_name, "BODY", tip_frames, search_discretization);  // HACK FOR EUSLISP TODO REMOVE
+  setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
+  //ROS_WARN_STREAM_NAMED("temp","euslisp hack in place");
+  //setValues(robot_description, group_name, "BODY", tip_frames, search_discretization);  // HACK FOR EUSLISP TODO REMOVE
 
   // Get solver parameters from param server
   ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");    
@@ -257,7 +258,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // maximum iterations for the svd calculation, default: 150
   int maxiter=150;
   // alpha the null-space velocity gain
-  double alpha = 0.01;
+  double alpha = 0.001;
 
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
@@ -321,8 +322,8 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   if (false)
   {
     double alpha;
-    nh_.param("alpha", alpha, 0.6);
-    ROS_INFO_STREAM_NAMED("temp","Read new alpha from param server of value: " << alpha << " from namespace " << nh_.getNamespace());
+    nh_.param("alpha", alpha, 0.01);
+    ROS_WARN_STREAM_NAMED("temp","Read new alpha from param server of value: " << alpha << " from namespace " << nh_.getNamespace());
     ik_solver_vel_->setAlpha(alpha);
   }
 
@@ -629,7 +630,27 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       {
         std::cout << boost::format("%10.3f") % (q_out(i) * 57.2957795);
       }
-      std::cout << std::endl;
+      std::cout << "   (degrees)" << std::endl;
+
+      // Percent close to limits
+      std::cout << "limit : " ;
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        double value = fabs(q_out(i) - joint_min_(i)) / fabs(joint_max_(i) - joint_min_(i)) * 100;
+        if (value > 50)
+          value = 100 - value;
+
+        // Show numbers red if too close to joint limits
+        if (value < 0.2)
+          std::cout << MOVEIT_CONSOLE_COLOR_RED;
+        else
+          std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
+
+        std::cout << boost::format("%10.3f") % value;
+
+        std::cout << MOVEIT_CONSOLE_COLOR_RESET;
+      }
+      std::cout << "   (percent)" << std::endl;
 
       // Min Joint Value
       std::cout << " min  : " ;
@@ -637,7 +658,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       {
         std::cout << boost::format("%10.3f") % (joint_min_(i) * 57.2957795);
       }
-      std::cout << std::endl;
+      std::cout << "   (degrees)" << std::endl;
 
       // Max Joint Value
       std::cout << " max  : " ;
@@ -645,7 +666,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       {
         std::cout << boost::format("%10.3f") % (joint_max_(i) * 57.2957795);
       }
-      std::cout << std::endl;
+      std::cout << "   (degrees)" << std::endl;
 
       // User Weight
       std::cout << "usrwei:    " << std::endl;

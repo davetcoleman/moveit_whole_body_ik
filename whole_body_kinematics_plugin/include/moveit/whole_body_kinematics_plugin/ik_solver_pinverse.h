@@ -112,7 +112,7 @@ private:
   std::vector<JntArray> U;
   JntArray S;
   std::vector<JntArray> V;
-  JntArray H; // performance criterion
+  JntArray H_; // performance criterion
   JntArray tmp;
   JntArray tmp2;
   double eps;
@@ -120,7 +120,7 @@ private:
 
   double alpha_;
   JntArray weights_;
-  JntArray W; // weighting matrix
+  JntArray W_; // weighting matrix
   JntArray joint_min;
   JntArray joint_max;
   JntArray joint_mid;

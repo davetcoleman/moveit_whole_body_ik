@@ -38,6 +38,7 @@
 
 
 #include <moveit/whole_body_kinematics_plugin/jacobian_generator.h>
+#include <moveit/macros/console_colors.h>
 
 // ROS
 #include <ros/ros.h>
@@ -89,7 +90,7 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
     // This is the easy version
 
     // HACK TO COMPARE WITH JSK EUSLISP VERSION
-    if (true)
+    if (false)
     {
       const robot_model::JointModelGroup *torso_and_arm = robot_model->getJointModelGroup("left_arm_torso");
 
@@ -129,12 +130,12 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
   // Debug
   if (verbose_ || true)
   {
-    std::cout << OMPL_CONSOLE_COLOR_CYAN << std::endl  << "Overview of created IK chain groups: " << std::endl;
+    std::cout << MOVEIT_CONSOLE_COLOR_CYAN << std::endl  << "Overview of created IK chain groups: " << std::endl;
     for (std::size_t i = 0; i < chains_.size(); ++i)
     {
       std::cout << "Chain " << i << ": " << chains_[i].jmg_->getName() << std::endl;
     }
-    std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
+    std::cout << MOVEIT_CONSOLE_COLOR_RESET << std::endl;
   }
 
   // Error check that our joint model group has the same number of active joints as we expect
@@ -420,7 +421,7 @@ void JacobianGenerator::addChain(const robot_model::JointModelGroup *current_gro
 
 bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state, KDL::Jacobian2d& jacobian, int seg_nr)
 {
-  bool use_kdl_jacobian = false; // if false use moveit jacobian function
+  bool use_kdl_jacobian = true; // if false use moveit jacobian function
 
   if (verbose_)
   {
@@ -457,7 +458,7 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
 
     if (verbose_)
     {
-      std::cout << OMPL_CONSOLE_COLOR_CYAN;
+      std::cout << MOVEIT_CONSOLE_COLOR_CYAN;
       std::cout << "Sub joints for chain " << chain_id << " is: ";
       for (std::size_t i = 0; i < chains_[chain_id].sub_q_in_->rows(); ++i)
       {
@@ -467,7 +468,7 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
     }
 
     if (verbose_)
-      std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
+      std::cout << MOVEIT_CONSOLE_COLOR_RESET << std::endl;
     // ------------------------------
 
     if (use_kdl_jacobian)
@@ -499,7 +500,7 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
     }
 
     if (verbose_)
-      std::cout << OMPL_CONSOLE_COLOR_GREEN << "*** Overlaying into main jacobian **** " << std::endl;
+      std::cout << MOVEIT_CONSOLE_COLOR_GREEN << "*** Overlaying into main jacobian **** " << std::endl;
 
     // Top left location to start placing jacobian
     int target_row = chains_[chain_id].jacobian_coords_.first;
@@ -525,7 +526,7 @@ bool JacobianGenerator::generateJacobian(const robot_state::RobotStatePtr state,
     {
       std::cout << "Modified Main jacobian: " << std::endl;
       jacobian.print();
-      std::cout << OMPL_CONSOLE_COLOR_RESET << std::endl;
+      std::cout << MOVEIT_CONSOLE_COLOR_RESET << std::endl;
       //std::cout << "about to loop chain id: " << chain_id << " chain size: " << chains.size() << std::endl;
     }
   }
@@ -692,8 +693,8 @@ bool JacobianGenerator::getJacobian(const robot_state::RobotStatePtr state, cons
   const robot_model::LinkModel* root_link_model = root_joint_model->getParentLinkModel();
 
   // Choose overall coordiante frame (base or end effector)
-  //reference_transform_ = root_link_model ? state->getGlobalLinkTransform(root_link_model).inverse() : Eigen::Affine3d::Identity();
-  reference_transform_ = state->getGlobalLinkTransform(link).inverse();
+  reference_transform_ = root_link_model ? state->getGlobalLinkTransform(root_link_model).inverse() : Eigen::Affine3d::Identity();
+  //reference_transform_ = state->getGlobalLinkTransform(link).inverse();
 
   //rows_ = 6;
   //columns_ = group->getVariableCount();
@@ -730,8 +731,11 @@ bool JacobianGenerator::getJacobian(const robot_state::RobotStatePtr state, cons
     {
       joint_index_ = group->getVariableGroupIndex(pjm->getName()); // TODO no string
 
-      std::cout << "Link " << link->getName() << " has joint index " << joint_index_ << " and joint value index " << joint_value_index
-                << " and skipping is " << chains_[chain_id].locked_joints_[joint_value_index] << std::endl;
+      if (verbose_)
+      {
+        std::cout << "Link " << link->getName() << " has joint index " << joint_index_ << " and joint value index " << joint_value_index
+                  << " and skipping is " << chains_[chain_id].locked_joints_[joint_value_index] << std::endl;
+      }
 
       // Revolute Joints
       if (pjm->getType() == robot_model::JointModel::REVOLUTE)

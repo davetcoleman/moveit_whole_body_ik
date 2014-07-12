@@ -57,14 +57,6 @@
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_model/robot_model.h>
 
-// Change text color on console output
-#define OMPL_CONSOLE_COLOR_RESET "\033[0m"
-#define OMPL_CONSOLE_COLOR_GREEN "\033[92m"
-#define OMPL_CONSOLE_COLOR_BLUE "\033[94m"
-#define OMPL_CONSOLE_COLOR_CYAN "\033[96m"
-#define OMPL_CONSOLE_COLOR_BROWN "\033[93m"
-#define OMPL_CONSOLE_COLOR_RED "\033[91m"
-
 namespace whole_body_kinematics_plugin
 {
 
