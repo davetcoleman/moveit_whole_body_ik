@@ -60,18 +60,7 @@ JacobianGenerator::~JacobianGenerator()
 bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
   const std::vector<std::string>& tip_frames, const robot_model::JointModelGroup *jmg)
 {
-  // Note: this code assumes your jmg (joint model group) is in this order:
-  // TORSO
-  // ARM
-  // ARM
-  // LEG
-  // LEG
-  // if its not, im not sure what will happen
-  //
-  // It also assumes your l & r arms each share x number of torso joints,
-  // and those are the only shared joints on the whole robot
-  //
-  // Assumes all planning groups have their root at the base_link (root link)
+  // See README.md for notes on assumptions
 
   // Convert to KDL Tree
   KDL::Tree kdl_tree;

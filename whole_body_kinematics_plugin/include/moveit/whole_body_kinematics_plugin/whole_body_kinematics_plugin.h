@@ -317,7 +317,7 @@ private:
    * \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
    *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account.
    */
-  int newtonRaphsonIterator(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out) const;
+  int newtonRaphsonIterator(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out, std::size_t &total_loops) const;
 
   /** @brief Check whether the solution lies within the consistency limit of the seed state
    *  @param seed_state Seed state

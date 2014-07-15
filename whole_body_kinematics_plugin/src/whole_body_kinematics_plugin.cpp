@@ -80,8 +80,8 @@ void WholeBodyKinematicsPlugin::getRandomConfiguration(KDL::JntArray &jnt_array)
 }
 
 void WholeBodyKinematicsPlugin::getRandomConfiguration(const KDL::JntArray &seed_state,
-  const std::vector<double> &consistency_limits,
-  KDL::JntArray &jnt_array) const
+                                                       const std::vector<double> &consistency_limits,
+                                                       KDL::JntArray &jnt_array) const
 {
   std::vector<double> values(dimension_, 0.0);
   std::vector<double> near(dimension_, 0.0);
@@ -99,8 +99,8 @@ void WholeBodyKinematicsPlugin::getRandomConfiguration(const KDL::JntArray &seed
 }
 
 bool WholeBodyKinematicsPlugin::checkConsistency(const KDL::JntArray& seed_state,
-  const std::vector<double> &consistency_limits,
-  const KDL::JntArray& solution) const
+                                                 const std::vector<double> &consistency_limits,
+                                                 const KDL::JntArray& solution) const
 {
   for (std::size_t i = 0; i < dimension_; ++i)
     if (fabs(seed_state(i) - solution(i)) > consistency_limits[i])
@@ -109,24 +109,25 @@ bool WholeBodyKinematicsPlugin::checkConsistency(const KDL::JntArray& seed_state
 }
 
 bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
-  const std::string& group_name,
-  const std::string& base_frame,
-  const std::vector<std::string>& tip_frames,
-  double search_discretization)
+                                           const std::string& group_name,
+                                           const std::string& base_frame,
+                                           const std::vector<std::string>& tip_frames,
+                                           double search_discretization)
 {
-
   // Call KinematicsBase parent class
   setValues(robot_description, group_name, base_frame, tip_frames, search_discretization);
-  //ROS_WARN_STREAM_NAMED("temp","euslisp hack in place");
-  //setValues(robot_description, group_name, "BODY", tip_frames, search_discretization);  // HACK FOR EUSLISP TODO REMOVE
+
+  //bool base_frame_temp = base_frame;
 
   // Get solver parameters from param server
-  ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");    
+  ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");
   nh_.param(group_name_ + "/kinematics_solver_max_solver_iterations", max_solver_iterations_, 500);
   nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
   nh_.param(group_name_ + "/kinematics_solver_verbose", verbose_, false);
   nh_.param(group_name_ + "/kinematics_solver_debug_mode", debug_mode_, false);
   nh_.param(group_name_ + "/kinematics_solver_visualize_search", visualize_search_, false);
+  //nh_.param(group_name_ + "/kinematics_solver_base_frame", base_frame_temp, false);
+
 
   // Load URDF and SRDF --------------------------------------------------------------------
   rdf_loader::RDFLoader rdf_loader(robot_description_);
@@ -159,7 +160,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // Get the num of dimensions
   ROS_INFO_STREAM_NAMED("temp","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
-    << joint_model_group_->getMimicJointModels().size() << " mimic joints");
+                        << joint_model_group_->getMimicJointModels().size() << " mimic joints");
 
   dimension_ = joint_model_group_->getActiveJointModels().size();
 
@@ -196,7 +197,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   {
     // Filter out non revolute or prismatic joint
     if(joint_model_group_->getJointModels()[i]->getType() == moveit::core::JointModel::REVOLUTE ||
-      joint_model_group_->getJointModels()[i]->getType() == moveit::core::JointModel::PRISMATIC)
+       joint_model_group_->getJointModels()[i]->getType() == moveit::core::JointModel::PRISMATIC)
     {
       ik_group_info_.joint_names.push_back(joint_model_group_->getJointModelNames()[i]);
       const std::vector<moveit_msgs::JointLimits> &jvec = joint_model_group_->getJointModels()[i]->getVariableBoundsMsg();
@@ -270,7 +271,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   ik_solver_vel_.reset(new IkSolverPinverse(tip_frames.size(), dimension_, joint_min_, joint_max_,
-      weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
+                                            weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
 
   ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
   return true;
@@ -305,14 +306,14 @@ bool WholeBodyKinematicsPlugin::timedOut(const ros::WallTime &start_time, double
 }
 
 bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs::Pose> &ik_poses,
-  const std::vector<double> &ik_seed_state,
-  double timeout,
-  const std::vector<double> &consistency_limits,
-  std::vector<double> &solution,
-  const IKCallbackFn &solution_callback,
-  moveit_msgs::MoveItErrorCodes &error_code,
-  const kinematics::KinematicsQueryOptions &options,
-  const moveit::core::RobotState* context_state) const
+                                                 const std::vector<double> &ik_seed_state,
+                                                 double timeout,
+                                                 const std::vector<double> &consistency_limits,
+                                                 std::vector<double> &solution,
+                                                 const IKCallbackFn &solution_callback,
+                                                 moveit_msgs::MoveItErrorCodes &error_code,
+                                                 const kinematics::KinematicsQueryOptions &options,
+                                                 const moveit::core::RobotState* context_state) const
 {
   //ROS_INFO_STREAM_NAMED("searchPositionIK","Starting MoveIt Whole Body IK Solver --------------------------------------");
 
@@ -339,7 +340,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   if(!consistency_limits.empty() && consistency_limits.size() != dimension_)
   {
     ROS_ERROR_STREAM_NAMED("whole_body_ik","Consistency limits be empty or must have size " << dimension_
-      << " instead of size " << consistency_limits.size());
+                           << " instead of size " << consistency_limits.size());
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
   }
@@ -348,7 +349,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   if (tip_frames_.size() != ik_poses.size())
   {
     ROS_ERROR_STREAM_NAMED("srv","Mismatched number of pose requests (" << ik_poses.size()
-      << ") to tip frames (" << tip_frames_.size() << ") in searchPositionIK");
+                           << ") to tip frames (" << tip_frames_.size() << ") in searchPositionIK");
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
   }
@@ -394,6 +395,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
 
   // Loop until solution is within epsilon
   unsigned int counter(0);
+  std::size_t total_loops = 0; // track number of jacobians generated and qdot_outs calculated
   while(true)
   {
     if (verbose_ || true)
@@ -430,7 +432,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     }
 
     // Solve
-    int ik_valid = newtonRaphsonIterator(jnt_pos_in, kdl_poses, jnt_pos_out);
+    int ik_valid = newtonRaphsonIterator(jnt_pos_in, kdl_poses, jnt_pos_out, total_loops);
 
     // Check if ROS is ok
     if (ik_valid == -5)
@@ -441,7 +443,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
 
     // Check solution
     if( !consistency_limits.empty() &&
-      ( (ik_valid < 0 && !options.return_approximate_solution) || !checkConsistency(jnt_seed_state, consistency_limits, jnt_pos_out)) )
+        ( (ik_valid < 0 && !options.return_approximate_solution) || !checkConsistency(jnt_seed_state, consistency_limits, jnt_pos_out)) )
     {
       if (verbose_)
         ROS_DEBUG_NAMED("whole_body_ik","Could not find IK solution: does not match consistency limits");
@@ -471,8 +473,8 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     if(error_code.val == error_code.SUCCESS)
     {
       static int total_iterations = 0;
-      total_iterations += counter;
-      ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << counter << " iterations, total iterations for all IK calls: " << total_iterations);
+      total_iterations += total_loops;
+      ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << total_loops << " iterations, with total iterations for all IK calls: " << total_iterations);
 
       if (visualize_search_)
       {
@@ -504,7 +506,7 @@ void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k)
 
 /* \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
  *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account. */
-int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out) const
+int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out, std::size_t &total_loops) const
 {
   // First solution guess is the seed state
   q_out = q_init;
@@ -526,6 +528,8 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
   {
+    total_loops ++;
+
     // To match euslisp's debug mode
     if (debug_mode_)
     {
@@ -574,27 +578,32 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       // Calculate the difference between our desired pose and current pose
       ctj_data_->delta_twist_ = diff(ctj_data_->current_pose_, kdl_poses[pose_id]);   // v_in = actual - target
 
-      //std::cout << "pose " << eef_pose.translation() << std::endl;
-      //std::cout << "pose " << eef_pose.rotation() << std::endl;
-
-      /*
-      double dt = 1;
-
-      (ctj_data_->current_pose_.p - kdl_poses[pose_id].p) / dt;
-      */
-
-      // Transform delta_twist to end effector coordinate system
-      //ctj_data_->delta_twist_ = kdl_poses[pose_id].inverse() * ctj_data_->delta_twist_;
-
-
       // Check if the difference between our desired pose and current pose is within epsilon tolerance
       if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), epsilon_))
         all_poses_valid = false;
 
+      // Limit the twist (end effector position and rotational velocity)
+      if (false)
+      {
+        KDL::Vector &pos_vel = ctj_data_->delta_twist_.vel;
+        pos_vel.print();
+        double p_limit = 0.1; // meters
+        if (pos_vel.x() > p_limit || pos_vel.y() > p_limit || pos_vel.z() > p_limit)
+        {
+          // Normalize the vector
+          std::cout << "Normalizing: " << std::endl;
+          pos_vel.Normalize();
+          pos_vel.print();
+          pos_vel = pos_vel * p_limit;
+        }
+        pos_vel.print();
+      }
+
       // Add this twist to our large twist vector from multiple end effectors
       for (std::size_t twist_index = 0; twist_index < TWIST_SIZE; ++twist_index)
       {
-        //std::cout << " >>> Twist value is: " << ctj_data_->delta_twist_( twist_index ) << " being placed in index " << TWIST_SIZE * pose_id + twist_index << std::endl;
+        //std::cout << " >>> Twist value is: " << ctj_data_->delta_twist_( twist_index ) << " being placed in index "
+        // << TWIST_SIZE * pose_id + twist_index << std::endl;
         ctj_data_->delta_twists_( TWIST_SIZE * pose_id + twist_index ) = ctj_data_->delta_twist_( twist_index );
       }
     }
@@ -624,24 +633,43 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       }
       std::cout << std::endl;
 
+      // Min Joint Value
+      std::cout << " min  : " ;
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        std::cout << boost::format("%10.3f") % (joint_min_(i)); // * 57.2957795);
+      }
+      //std::cout << "   (degrees)" << std::endl;
+      std::cout << std::endl;
+
       // Angle
       std::cout << "angle : " ;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.3f") % (q_out(i) * 57.2957795);
+        std::cout << boost::format("%10.3f") % (q_out(i)); // * 57.2957795);
       }
-      std::cout << "   (degrees)" << std::endl;
+      //std::cout << "   (degrees)" << std::endl;
+      std::cout << std::endl;
+
+      // Max Joint Value
+      std::cout << " max  : " ;
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        std::cout << boost::format("%10.3f") % (joint_max_(i)); // * 57.2957795);
+      }
+      //std::cout << "   (degrees)" << std::endl;
+      std::cout << std::endl;
 
       // Percent close to limits
       std::cout << "limit : " ;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         double value = fabs(q_out(i) - joint_min_(i)) / fabs(joint_max_(i) - joint_min_(i)) * 100;
-        if (value > 50)
-          value = 100 - value;
+        //if (value > 50)
+        //  value = 100 - value;
 
         // Show numbers red if too close to joint limits
-        if (value < 0.2)
+        if (value < 0.2 || value > 99.8)
           std::cout << MOVEIT_CONSOLE_COLOR_RED;
         else
           std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
@@ -652,24 +680,8 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       }
       std::cout << "   (percent)" << std::endl;
 
-      // Min Joint Value
-      std::cout << " min  : " ;
-      for (std::size_t i = 0; i < q_out.rows(); ++i)
-      {
-        std::cout << boost::format("%10.3f") % (joint_min_(i) * 57.2957795);
-      }
-      std::cout << "   (degrees)" << std::endl;
-
-      // Max Joint Value
-      std::cout << " max  : " ;
-      for (std::size_t i = 0; i < q_out.rows(); ++i)
-      {
-        std::cout << boost::format("%10.3f") % (joint_max_(i) * 57.2957795);
-      }
-      std::cout << "   (degrees)" << std::endl;
-
       // User Weight
-      std::cout << "usrwei:    " << std::endl;
+      //std::cout << "usrwei:    " << std::endl;
     }
 
     // Check if we are done
@@ -704,22 +716,11 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
-    if (ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_, ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_) != 1)
+    if (ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_,
+                                         ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_, solver_iteration == 0) != 1)
     {
       ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Error in ik solver pinverse");
       return -1;
-    }
-
-    // See velocities
-    if (verbose_)
-    {
-      std::cout << "Qdot: ";
-      for (std::size_t i = 0; i < q_out.rows(); ++i)
-      {
-        std::cout << boost::format("%11.7f") % ctj_data_->qdot_(i);
-        //std::cout << boost::format("%20.15f") % ctj_data_->qdot_(i);
-      }
-      std::cout << std::endl;
     }
 
     // Check for stagnation in qdot every 4 iterations
@@ -736,8 +737,8 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
         // Only check if we haven't already found a non
         //        double eps = 1e-10;
         if (!has_change && // stop checking if we've already proved it has changed
-          (temp > ctj_data_->qdot_cache_(i) + epsilon_ * 0.01 ||
-            temp < ctj_data_->qdot_cache_(i) - epsilon_ * 0.01 ))
+            (temp > ctj_data_->qdot_cache_(i) + epsilon_ * 0.01 ||
+             temp < ctj_data_->qdot_cache_(i) - epsilon_ * 0.01 ))
           has_change = true;
 
         ctj_data_->qdot_cache_(i) = temp;
@@ -754,39 +755,54 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       }
     }
 
-    // Check
-    for (std::size_t i = 0; i < ctj_data_->qdot_.rows(); ++i)
+    // Error Check - TODO remove this check
+    if (true)
     {
-      if (isnan(ctj_data_->qdot_(i)))
+      for (std::size_t i = 0; i < ctj_data_->qdot_.rows(); ++i)
       {
-        std::cout << "FOUND NAN " << std::endl;
-        ctj_data_->qdot_.print();
-        break;
+        if (isnan(ctj_data_->qdot_(i)))
+        {
+          std::cout << "FOUND NAN " << std::endl;
+          ctj_data_->qdot_.print();
+          break;
+        }
       }
     }
 
-
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
     // q_out = q_out + q_dot
-    Add(q_out, ctj_data_->qdot_, q_out);
+    // Add(q_out, ctj_data_->qdot_, q_out);
+    q_out.data = q_out.data + ctj_data_->qdot_.data;
+
+    if (debug_mode_)
+      std::cout << "limit : ";
 
     // Enforce joint limits
     for (unsigned int j = 0; j < q_out.rows(); j++)
     {
       if (q_out(j) < joint_min_(j))
       {
-        if (verbose_)
-          ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Min joint limit hit for joint " << j);
+        if (debug_mode_)
+          std::cout << boost::format("%+10s") % "min";
+
         q_out(j) = joint_min_(j) + joint_limit_offset_;
       }
       else if (q_out(j) > joint_max_(j))
       {
-        if (verbose_)
-          ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Max joint limit hit for joint " << j);
+        if (debug_mode_)
+          std::cout << boost::format("%+10s") % "max";
         q_out(j) = joint_max_(j) - joint_limit_offset_;
       }
+      else if (debug_mode_)
+        std::cout << boost::format("%+10s") % " ";
     }
+    if (debug_mode_)
+      std::cout << std::endl;
 
+
+    // TEMP TODO
+    //if (solver_iteration > 2 )
+    //  exit(0);
   }
 
   // We never found a close enough solution
@@ -794,8 +810,8 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 }
 
 bool WholeBodyKinematicsPlugin::getPositionFK(const std::vector<std::string> &link_names,
-  const std::vector<double> &joint_angles,
-  std::vector<geometry_msgs::Pose> &poses) const
+                                              const std::vector<double> &joint_angles,
+                                              std::vector<geometry_msgs::Pose> &poses) const
 {
   /*
     ros::WallTime n1 = ros::WallTime::now();
@@ -823,7 +839,7 @@ bool WholeBodyKinematicsPlugin::getPositionFK(const std::vector<std::string> &li
 }
 
 const bool WholeBodyKinematicsPlugin::supportsGroup(const moveit::core::JointModelGroup *jmg,
-  std::string* error_text_out) const
+                                                    std::string* error_text_out) const
 {
   return true;
 }

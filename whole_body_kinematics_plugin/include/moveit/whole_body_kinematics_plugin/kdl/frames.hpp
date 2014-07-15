@@ -239,7 +239,7 @@ public:
      //!    @return the norm of the vector
      double Norm() const;
 
-
+     void print() const;
 
      //! a 3D vector where the 2D vector v is put in the XY plane
      inline void Set2DXY(const Vector2& v);

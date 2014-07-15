@@ -81,9 +81,9 @@ public:
   ~IkSolverPinverse() {};
 
   int cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, 
-    JntArray& qdot_out, JntArray& prev_H, bool debug_mode);
+    JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration);
 
-  bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H, bool debug_mode);
+  bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H, bool debug_mode, bool is_first_iteration);
 
   /**
    *Set joint weights for optimization criterion
@@ -127,6 +127,7 @@ private:
   JntArray joint_constant1; // pre-compute some of the necessary values
   JntArray joint_constant2; // pre-compute some of the necessary values
   JntArray joint_constant3; // pre-compute some of the necessary values
+  JntArray joint_constant4; // pre-compute some of the necessary values
   int num_tips; // number of end effectors to solve for
   bool verbose_; // to show output debug info or not
 

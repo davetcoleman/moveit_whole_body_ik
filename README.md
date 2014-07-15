@@ -51,7 +51,7 @@ Note: this code assumes your jmg (joint model group) is in this order:
 
 if its not, im not sure what will happen
    
-It also assumes your l & r arms each share x number of torso joints, and those are the only shared joints on the whole robot
+It also assumes your left & right arms each share ``n`` number of torso joints, and those are the only shared joints on the whole robot
   
 Assumes all planning groups have their root at the base_link (root link)
 
