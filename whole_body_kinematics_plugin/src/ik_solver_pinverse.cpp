@@ -45,7 +45,7 @@ namespace whole_body_kinematics_plugin
 {
 
 IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
-  JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double _alpha, bool verbose)
+  JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double null_space_vel_gain, bool verbose)
   :
   // Load the jacobian to have #joint ROWS x #tips COLS
   //  jacobian(_num_joints, _num_tips*6),
@@ -58,7 +58,7 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
   tmp2(_num_joints-6*_num_tips),
   eps(_eps),
   maxiter(_maxiter),
-  alpha_(_alpha),
+  null_space_vel_gain_(null_space_vel_gain),
   num_tips(_num_tips),
   weights_(weights),
   W_(_num_joints),
@@ -414,7 +414,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       jacobian.print();
       std::cout << std::endl  << "H criterion: " << std::endl;
       H_.print();
-      std::cout << std::endl  << "Alpha: " << alpha_ << std::endl;
+      std::cout << std::endl  << "Null_Space_Vel_Gain: " << null_space_vel_gain_ << std::endl;
 
 
       std::cout << "J^+ * J" << std::endl;
@@ -441,7 +441,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     }
 
     // qdot += k(I - J^(+)*J)
-    tmp3_ = alpha_ * (identity_ - pinverse_ * jacobian.data) * H_.data;  // TODO is this jacobian already weighted?
+    tmp3_ = null_space_vel_gain_ * (identity_ - pinverse_ * jacobian.data) * H_.data;  // TODO is this jacobian already weighted?
 
     if (this_verbose)
     {
@@ -456,7 +456,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     {
       // Scalar of null space component
       std::cout << "k     : ";
-      std::cout << boost::format("%10.4f") % alpha_;
+      std::cout << boost::format("%10.4f") % null_space_vel_gain_;
       std::cout << std::endl;
 
       // Null space component
@@ -633,9 +633,9 @@ int IkSolverPinverse::setAllWeights(const double &weight)
   return 0;
 }
 
-int IkSolverPinverse::setAlpha(const double alpha)
+int IkSolverPinverse::setNullSpaceVelGain(const double null_space_vel_gain)
 {
-  alpha_ = alpha;
+  null_space_vel_gain_ = null_space_vel_gain;
   return 0;
 }
 

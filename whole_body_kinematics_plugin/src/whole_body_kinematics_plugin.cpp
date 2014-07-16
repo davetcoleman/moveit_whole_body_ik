@@ -123,6 +123,10 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");
   nh_.param(group_name_ + "/kinematics_solver_max_solver_iterations", max_solver_iterations_, 500);
   nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
+  nh_.param(group_name_ + "/kinematics_solver_ee_pos_vel_limit", ee_pos_vel_limit_, 0.1);
+  nh_.param(group_name_ + "/kinematics_solver_ee_rot_vel_limit", ee_rot_vel_limit_, 0.1);
+  nh_.param(group_name_ + "/kinematics_solver_null_space_vel_gain", null_space_vel_gain_, 0.001);
+
   nh_.param(group_name_ + "/kinematics_solver_verbose", verbose_, false);
   nh_.param(group_name_ + "/kinematics_solver_debug_mode", debug_mode_, false);
   nh_.param(group_name_ + "/kinematics_solver_visualize_search", visualize_search_, false);
@@ -258,8 +262,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   double eps=0.00001;
   // maximum iterations for the svd calculation, default: 150
   int maxiter=150;
-  // alpha the null-space velocity gain
-  double alpha = 0.001;
 
   // Load the jacobian generator
   jacobian_generator_.reset(new JacobianGenerator(verbose_));
@@ -271,7 +273,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   ik_solver_vel_.reset(new IkSolverPinverse(tip_frames.size(), dimension_, joint_min_, joint_max_,
-                                            weights, ctj_data_->jacobian_, eps, maxiter, alpha, verbose_));
+                                            weights, ctj_data_->jacobian_, eps, maxiter, null_space_vel_gain_, verbose_));
 
   ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
   return true;
@@ -318,15 +320,6 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   //ROS_INFO_STREAM_NAMED("searchPositionIK","Starting MoveIt Whole Body IK Solver --------------------------------------");
 
   ros::WallTime n1 = ros::WallTime::now();
-
-  // Optimization debug functionality
-  if (false)
-  {
-    double alpha;
-    nh_.param("alpha", alpha, 0.01);
-    ROS_WARN_STREAM_NAMED("temp","Read new alpha from param server of value: " << alpha << " from namespace " << nh_.getNamespace());
-    ik_solver_vel_->setAlpha(alpha);
-  }
 
   // Check if seed state correct
   if(ik_seed_state.size() != dimension_)

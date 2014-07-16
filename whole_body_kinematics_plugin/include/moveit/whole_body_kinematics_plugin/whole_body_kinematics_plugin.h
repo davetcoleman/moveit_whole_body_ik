@@ -367,8 +367,13 @@ private:
 
   robot_model::JointModelGroup* joint_model_group_;
   int max_solver_iterations_;
-  double epsilon_;
+
+  // Parameters
+  double ee_pos_vel_limit_; // maximum allowed input positional velocity of the end effector before limiting
+  double ee_rot_vel_limit_; // maximum allowed input rotational velocity of the end effector before limiting
+  double epsilon_; // threshold of similiarity of desired ee pose and solved ee pose
   double joint_limit_offset_; // amount to move the joint away from the limit when the limit is hit. setting to zero will cause nan to occur in calculations
+  double null_space_vel_gain_; // k, the amount the null space calculation affects the overall velocity gain
 
   bool verbose_; // show debug info
   bool debug_mode_; // math debug info, similar to euslisp's version

@@ -72,11 +72,11 @@ public:
    * inverse is set to zero, default: 0.00001
    * @param maxiter maximum iterations for the svd calculation,
    * default: 150
-   * @param alpha the null-space velocity gain
+   * @param null_space_velocity_gain the null-space velocity gain
    *
    */
   IkSolverPinverse(int num_tips, int num_joints, JntArray joint_min, JntArray joint_max, JntArray weights, const Jacobian2d& jacobian,
-    double eps=0.00001,int maxiter=150, double alpha = 0.25, bool verbose = false);
+    double eps=0.00001,int maxiter=150, double null_space_velocity_gain = 0.25, bool verbose = false);
 
   ~IkSolverPinverse() {};
 
@@ -98,10 +98,10 @@ public:
   /**
    *Set null psace velocity gain
    *
-   *@param alpha NUllspace velocity cgain
+   *@param null_space_velocity_gain NUllspace velocity cgain
    *
    */
-  int setAlpha(const double alpha);
+  int setNullSpaceVelGain(const double null_space_vel_gain);
 
   void print(Eigen::MatrixXd &data) const;
   void print(Eigen::VectorXd &data) const;
@@ -118,7 +118,7 @@ private:
   double eps;
   int maxiter;
 
-  double alpha_;
+  double null_space_vel_gain_;
   JntArray weights_;
   JntArray W_; // weighting matrix
   JntArray joint_min;
