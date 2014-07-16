@@ -100,7 +100,7 @@ public:
   void formatNum(double num) const;
 
 private:
-  //  Jacobian2d jacobian;
+  Jacobian2d original_jacobian;
   SVD_HH svd_;
   std::vector<JntArray> U;
   JntArray S;

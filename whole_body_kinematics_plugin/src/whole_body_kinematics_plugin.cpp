@@ -324,7 +324,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // Check if seed state correct
   if(ik_seed_state.size() != dimension_)
   {
-    ROS_ERROR_STREAM_NAMED("srv","Seed state must have size " << dimension_ << " instead of size " << ik_seed_state.size());
+    ROS_ERROR_STREAM_NAMED("searchPositionIK","Seed state must have size " << dimension_ << " instead of size " << ik_seed_state.size());
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
   }
@@ -332,7 +332,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // Check consistency limits
   if(!consistency_limits.empty() && consistency_limits.size() != dimension_)
   {
-    ROS_ERROR_STREAM_NAMED("whole_body_ik","Consistency limits be empty or must have size " << dimension_
+    ROS_ERROR_STREAM_NAMED("searchPositionIK","Consistency limits be empty or must have size " << dimension_
                            << " instead of size " << consistency_limits.size());
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
@@ -341,7 +341,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // Check that we have the same number of poses as tips
   if (tip_frames_.size() != ik_poses.size())
   {
-    ROS_ERROR_STREAM_NAMED("srv","Mismatched number of pose requests (" << ik_poses.size()
+    ROS_ERROR_STREAM_NAMED("searchPositionIK","Mismatched number of pose requests (" << ik_poses.size()
                            << ") to tip frames (" << tip_frames_.size() << ") in searchPositionIK");
     error_code.val = error_code.NO_IK_SOLUTION;
     return false;
@@ -389,16 +389,18 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // Loop until solution is within epsilon
   unsigned int counter(0);
   std::size_t total_loops = 0; // track number of jacobians generated and qdot_outs calculated
+  static int total_iterations = 0;
+
   while(true)
   {
     if (verbose_ || true)
-      ROS_DEBUG_NAMED("whole_body_ik","Outer most iteration: %d, time: %f, Timeout: %f",counter,(ros::WallTime::now()-n1).toSec(),timeout);
+      ROS_DEBUG_NAMED("searchPositionIK","Iteration: %d, time: %f, Timeout: %f", total_loops, (ros::WallTime::now()-n1).toSec(),timeout);
     counter++;
 
     // Check if timed out
     if(timedOut(n1,timeout))
     {
-      ROS_DEBUG_NAMED("whole_body_ik","IK timed out");
+      ROS_DEBUG_NAMED("searchPositionIK","IK timed out");
       error_code.val = error_code.TIMED_OUT;
       return false;
     }
@@ -418,9 +420,9 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
       }
       if (verbose_)
       {
-        ROS_DEBUG_NAMED("whole_body_ik","New random configuration");
+        ROS_DEBUG_NAMED("searchPositionIK","New random configuration");
         for(unsigned int j=0; j < dimension_; j++)
-          ROS_DEBUG_NAMED("whole_body_ik","%d %f", j, jnt_pos_in(j));
+          ROS_DEBUG_NAMED("searchPositionIK","%d %f", j, jnt_pos_in(j));
       }
     }
 
@@ -430,7 +432,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     // Check if ROS is ok
     if (ik_valid == -5)
     {
-      ROS_ERROR_STREAM_NAMED("whole_body_ik","ROS requested shutdown");
+      ROS_ERROR_STREAM_NAMED("searchPositionIK","ROS requested shutdown");
       return -1;
     }
 
@@ -439,13 +441,13 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
         ( (ik_valid < 0 && !options.return_approximate_solution) || !checkConsistency(jnt_seed_state, consistency_limits, jnt_pos_out)) )
     {
       if (verbose_)
-        ROS_DEBUG_NAMED("whole_body_ik","Could not find IK solution: does not match consistency limits");
+        ROS_DEBUG_NAMED("searchPositionIK","Could not find IK solution: does not match consistency limits");
       continue;
     }
     else if(ik_valid < 0 && !options.return_approximate_solution)
     {
       if (verbose_)
-        ROS_DEBUG_NAMED("whole_body_ik","Could not find IK solution");
+        ROS_DEBUG_NAMED("searchPositionIK","Could not find IK solution");
       continue;
     }
 
@@ -462,12 +464,12 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
     else
       error_code.val = error_code.SUCCESS;
 
+    total_iterations += total_loops;
+
     // Check if callback was sucessful
     if(error_code.val == error_code.SUCCESS)
     {
-      static int total_iterations = 0;
-      total_iterations += total_loops;
-      ROS_DEBUG_STREAM_NAMED("whole_body_ik","Solved after " << total_loops << " iterations, with total iterations for all IK calls: " << total_iterations);
+      ROS_DEBUG_STREAM_NAMED("searchPositionIK","Solved after " << total_loops << " iterations, with total iterations for all IK calls: " << total_iterations);
 
       if (visualize_search_)
       {
@@ -495,6 +497,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 
   // Actualy requried vars
   bool all_poses_valid; // track if any pose is still not within epsilon distance to its goal
+  bool all_poses_almost_valid; // track if our poses are close enought that we can remove the null space component
 
   // Set the performance criterion back to zero
   // TODO is this a valid assumption?
@@ -517,12 +520,6 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     {
       std::cout << "------------------------------------------------------------" << std::endl;
       std::cout << "loop:   " << solver_iteration << " of " << max_solver_iterations_ << std::endl;
-      std::cout << "tips:   ";
-      for (std::size_t i = 0; i < ik_group_info_.link_names.size(); ++i)
-      {
-        std::cout << ik_group_info_.link_names[i] << " ";
-      }
-      std::cout << std::endl;
     }
 
     if (!ros::ok())
@@ -532,6 +529,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     }
 
     all_poses_valid = true;
+    all_poses_almost_valid = true;
 
     // Send to MoveIt's robot_state
     robot_state_->setJointGroupPositions(joint_model_group_, q_out.data);
@@ -541,7 +539,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
-      ros::Duration(0.25).sleep();
+      ros::Duration(0.1).sleep();
     }
 
     // For each end effector
@@ -564,11 +562,8 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
         all_poses_valid = false;
 
       // Check if the difference between our desired pose and current pose is within our secondary tolerance
-      if (Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), null_space_epsilon_))
-      {
-        ROS_ERROR_STREAM_NAMED("temp","Within null space epsilon!");
-        null_space_vel_gain *= 0.05;
-      }
+      if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), null_space_epsilon_))
+        all_poses_almost_valid = false;
 
       // Limit the end effector positional velocity
       KDL::Vector &pos_vel = ctj_data_->delta_twist_.vel;
@@ -697,29 +692,27 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       }
       std::cout << "   (percent)" << std::endl;
 
+      /*
+        double desired[7] = {-1.39477, 1.6529, 0.70755, -0.12871, -1.84963, -1.19424, -0.634789};
 
-      double desired[7] = {-1.39477, 1.6529, 0.70755, -0.12871, -1.84963, -1.19424, -0.634789};
-
-      // Desired percent
-      std::cout << "desired %: " ;
-      for (std::size_t i = 0; i < q_out.rows(); ++i)
-      {
+        // Desired percent
+        std::cout << "desired %: " ;
+        for (std::size_t i = 0; i < q_out.rows(); ++i)
+        {
         double value = fabs(desired[i] - joint_min_(i)) / fabs(joint_max_(i) - joint_min_(i)) * 100;
 
         // Show numbers red if too close to joint limits
         if (value < 0.2 || value > 99.8)
-          std::cout << MOVEIT_CONSOLE_COLOR_RED;
+        std::cout << MOVEIT_CONSOLE_COLOR_RED;
         else
-          std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
+        std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
 
         std::cout << boost::format("%10.4f") % value;
 
         std::cout << MOVEIT_CONSOLE_COLOR_RESET;
-      }
-      std::cout << "   (percent)" << std::endl;
-
-
-
+        }
+        std::cout << "   (percent)" << std::endl;
+      */
 
       // User Weight
       //std::cout << "usrwei:    " << std::endl;
@@ -748,6 +741,15 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       return 1;
     }
 
+    // Check if we can reduce the influence of the null space
+    if (all_poses_almost_valid)
+    {
+      if (debug_mode_)
+        ROS_ERROR_STREAM_NAMED("temp","Within null space epsilon!");
+      null_space_vel_gain *= 0.05;
+    }
+
+
     //Calculate the jacobian "jac" the current joint positions in robot_state
     if( !jacobian_generator_->generateJacobian(robot_state_, ctj_data_->jacobian_) )
     {
@@ -758,7 +760,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
     if (ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_,
-                                         ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_, solver_iteration == 0, 
+                                         ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_, solver_iteration == 0,
                                          null_space_vel_gain) != 1)
     {
       ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Error in ik solver pinverse");
@@ -788,12 +790,12 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
 
       if (!has_change)
       {
-        if (verbose_)
+        if (debug_mode_)
         {
           ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Giving up because no change detected");
         }
         debug_would_have_stopped = true;
-        //break; // disable this to keep going
+        break; // disable this to keep going
       }
     }
 

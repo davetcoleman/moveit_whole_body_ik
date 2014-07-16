@@ -49,7 +49,7 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
                                    JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, bool verbose)
   :
   // Load the jacobian to have #joint ROWS x #tips COLS
-  //  jacobian(_num_joints, _num_tips*6),
+  original_jacobian(_num_joints, _num_tips*6), // TODO remove this? this is temp testing for using non-weighted jacobian in null space
   svd_(jacobian),
   U(_num_tips*6,JntArray(_num_joints)),
   S(_num_joints),
@@ -113,10 +113,12 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   // null space:
   bool use_gpm = true;
 
+  // Copy original jacobian for later calculations TODO remove this?
+  //original_jacobian = jacobian;
+
   // Automatically stop calculating gpm if null_space_vel_gain is below threshold to save calculations
   if (null_space_vel_gain < 0.0001)
   {
-    std::cout << "SKIPPING NULL SPACE PROJECTION BECAUSE GAIN IS TOO LOW!!!! " << std::endl;
     use_gpm = false;
   }
 
@@ -126,7 +128,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   // TODO: choose best ratio
   double sv_ratio=1e-300; // default: 1.0e-3
 
-  if (debug_mode)
+  if (debug_mode && false)
   {
     // Show original non-weighted jacobian
     std::cout << "Jacobian : ";
@@ -349,11 +351,6 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
         /
         ( 4 * pow(joint_max(i)-q_in(i),2) * pow(q_in(i) - joint_min(i),2) );
       */
-      /*
-        H_(i) = 0;
-        if (i == 3)
-        H_(3) = 1;
-      */
     }
 
     if (debug_mode)
@@ -466,7 +463,8 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
     {
       formatNum(deltaH[i]);
     }
-    std::cout << "   if deltaH < 0 then weight = 1" << std::endl;
+    std::cout << std::endl;
+    //std::cout << "   if deltaH < 0 then weight = 1" << std::endl;
 
     std::cout << "weight   : ";
     double tmp;
