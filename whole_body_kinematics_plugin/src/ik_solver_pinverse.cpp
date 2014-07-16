@@ -40,12 +40,13 @@
 #include <moveit/whole_body_kinematics_plugin/MatrixSolvers.h> // SVD solver
 #include <iostream> // TODO remove
 #include <boost/format.hpp>
+#include <moveit/macros/console_colors.h>
 
 namespace whole_body_kinematics_plugin
 {
 
 IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
-  JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double null_space_vel_gain, bool verbose)
+                                   JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double null_space_vel_gain, bool verbose)
   :
   // Load the jacobian to have #joint ROWS x #tips COLS
   //  jacobian(_num_joints, _num_tips*6),
@@ -103,7 +104,7 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
  * \param prev_H - contains the previous performance criterion
  7 */
 int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian,
-  JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration)
+                                       JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration)
 {
   // weights:
   bool use_wln = true;
@@ -112,7 +113,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   bool use_kdl = false;
   bool use_kdl2 = false;
   // null space:
-  bool use_gpm = false; // not with use_kdl
+  bool use_gpm = true; // not with use_kdl
 
   unsigned int i,j;
   double sum;
@@ -123,7 +124,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   if (debug_mode)
   {
     // Show original non-weighted jacobian
-    std::cout << "J     : ";
+    std::cout << "Jacobian : ";
     for (i = 0; i < jacobian.rows(); ++i)
     {
       for (j = 0; j < jacobian.columns(); ++j)
@@ -134,7 +135,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
 
       // close the whole matrix unless we are on last value
       if ( !(j == jacobian.columns() && i == jacobian.rows() - 1) )
-        std::cout << "        ";
+        std::cout << "           ";
     }
   }
 
@@ -146,7 +147,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     if (debug_mode)
     {
       // Show jacobian with added weights
-      std::cout << "Jw    : ";
+      std::cout << "Jw       : ";
       for (i = 0; i < jacobian.rows(); ++i)
       {
         for (j = 0; j < jacobian.columns(); ++j)
@@ -157,7 +158,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
 
         // close the whole matrix unless we are on last value
         if ( !(j == jacobian.columns() && i == jacobian.rows() - 1) )
-          std::cout << "        ";
+          std::cout << "           ";
       }
     }
   }
@@ -181,7 +182,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       }
 
       if (use_wln && !is_first_iteration)
-        qdot_out(i) = 1/sqrt(W_(i)) *  sum; // use weight to slow down joint velocities
+        qdot_out(i) = W_(i) *  sum; // use weight to slow down joint velocities
       else
         qdot_out(i) = sum;
     }
@@ -231,7 +232,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
 
       //Put the result in qdot_out
       if (use_wln && !is_first_iteration)
-        qdot_out(i) = 1/sqrt(W_(i)) * sum;
+        qdot_out(i) = W_(i) * sum;
       else
         qdot_out(i) = sum;
     }
@@ -327,7 +328,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       }
 
       if (use_wln && !is_first_iteration)
-        qdot_out(i) = 1/sqrt(W_(i)) *  sum;
+        qdot_out(i) = W_(i) *  sum;
       else
         qdot_out(i) = sum;
     }
@@ -336,7 +337,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
   if (debug_mode)
   {
     // Show pseudo-inverse, transposed
-    std::cout << "J#t   : ";
+    std::cout << "J#t      : ";
     for (j = 0; j < pinverse_.cols(); ++j)
     {
       for (i = 0; i < pinverse_.rows(); ++i)
@@ -347,35 +348,43 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
 
       // close the whole matrix unless we are on last value
       if ( !(j == pinverse_.cols() - 1 && i == pinverse_.rows()) )
-        std::cout << "        ";
+        std::cout << "           ";
     }
 
     // Show current xdot location
-    std::cout << "x     : ";
-    for (std::size_t i = 0; i < xdot_in.rows(); ++i)
-    {
+    /*
+      std::cout << "xdot_in  : ";
+      for (std::size_t i = 0; i < xdot_in.rows(); ++i)
+      {
       std::cout << boost::format("%10.4f") % xdot_in(i);
-    }
-    std::cout << "       (xdot_in)" << std::endl;
+      }
+      std::cout << std::endl;
+    */
 
-    // Pseudo inverse times xdot
-    std::cout << "J#x   : ";
-    for (std::size_t i = 0; i < qdot_out.rows(); ++i)
-    {
-      std::cout << boost::format("%10.4f") % qdot_out(i);
-    }
-    std::cout << "       (qdot_out)" << std::endl;
+
   }
 
   // Gradient Projection Method using Null Space ----------------------------------------------
 
   if (use_gpm)
   {
+    if (debug_mode)
+    {
+      // Pseudo inverse times xdot
+      std::cout << "qdot_orig: ";
+
+      for (std::size_t i = 0; i < qdot_out.rows(); ++i)
+      {
+        std::cout << boost::format("%10.4f") % qdot_out(i);
+      }
+      std::cout << std::endl;
+    }
+
     // H
     for(i = 0; i < jacobian.columns(); i++) // joints
     {
-      //H_(i) = 0.25 * joint_constant1(i) / (  (joint_max(i) - q_in(i)) * (q_in(i) - joint_min(i)) );
-
+      // Performance criterion used by EUSLISP implementation at JSK
+      //   H will range from 1 at joint_min to  -1 at joint_max
       H_(i) = ( joint_constant2(i) - q_in(i) ) / joint_constant3(i);
 
       // Calculate the change in joint location relative to its limits
@@ -394,7 +403,13 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
 
     if (debug_mode)
     {
-      std::cout << "H     : ";
+      // Scalar of null space component
+      std::cout << "null_gain: ";
+      std::cout << boost::format("%10.4f") % null_space_vel_gain_;
+      std::cout << std::endl;
+
+      // Performance criterion
+      std::cout << "H        : ";
       for (std::size_t i = 0; i < H_.rows(); ++i)
       {
         std::cout << boost::format("%10.4f") % H_(i);
@@ -452,24 +467,29 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       print(tmp3_);
     }
 
+    // Apply the null space
+    qdot_out.data += tmp3_;
+
     if (debug_mode)
     {
-      // Scalar of null space component
-      std::cout << "k     : ";
-      std::cout << boost::format("%10.4f") % null_space_vel_gain_;
-      std::cout << std::endl;
-
       // Null space component
-      std::cout << "gpm   : ";
+      std::cout << "gpm compt: " << MOVEIT_CONSOLE_COLOR_CYAN;
+
       for (std::size_t i = 0; i < tmp3_.rows(); ++i)
       {
         std::cout << boost::format("%10.4f") % tmp3_(i);
       }
-      std::cout << "    (gpm component)" << std::endl;
+      std::cout << MOVEIT_CONSOLE_COLOR_RESET << std::endl;
+
+      // Pseudo inverse times xdot
+      std::cout << "qdot_out : ";
+
+      for (std::size_t i = 0; i < qdot_out.rows(); ++i)
+      {
+        std::cout << boost::format("%10.4f") % qdot_out(i);
+      }
+      std::cout << std::endl;
     }
-
-
-    qdot_out.data += tmp3_;
 
   }
 
@@ -484,10 +504,10 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
 
   if (debug_mode)
   {
-    std::cout << "prevH : ";
+    std::cout << "prevH    : ";
     for (std::size_t i = 0; i < W_.rows(); ++i)
     {
-      std::cout << boost::format("%10.4f") % prev_H(i);
+      formatNum(prev_H(i));
     }
     std::cout << std::endl;
   }
@@ -516,29 +536,9 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
       W_(i) = 1;
     }
 
-    if (true) // TODO remove this
-    {
-      if ( isnan(gradientH) || isnan(W_(i)) || isnan(-1/sqrt(W_(i))))
-      {
-        std::cout << "Is nan! " << std::endl;
-        std::cout << "  gradH:  " << gradientH << std::endl;
-        std::cout << "  first:  " << pow(joint_max(i) - q_in(i), 2) * (2*q_in(i) - joint_max(i) - joint_min(i) ) << std::endl;
-        std::cout << "  second: " << ( 4 * pow(joint_max(i)-q_in(i),2) * pow(q_in(i) - joint_min(i),2) ) << std::endl;
-        std::cout << "  max:    " << joint_max(i) << "\n";
-        std::cout << "  min:    " << joint_min(i) << std::endl;
-        std::cout << "  q_in:   " << q_in(i) << "\n";
-        std::cout << "  i: " << i << std::endl;
-        std::cout << "  W(i): " << W_(i) << std::endl;
-        std::cout << "  W(i)^(-1/2): " << 1/sqrt(W_(i)) << std::endl;
-        q_in.print();
-        std::cout << "---------------------------- " << std::endl;
-      }
-    }
-
     // Prepare the weight for multiplication by the jacobian
     // W = W^(-1/2)
-    //W_(i) = 1/sqrt(W_(i));
-    //W_(i) = 1/W_(i);
+    W_(i) = 1/sqrt(W_(i));
 
     // Save gradient for next iteration to find delta
     prev_H(i) = gradientH;
@@ -546,62 +546,37 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
 
   if (debug_mode)
   {
-    std::cout << "gradH : ";
+    std::cout << "gradH    : ";
     for (std::size_t i = 0; i < W_.rows(); ++i)
     {
-      if (gradientHs[i] > 1000)
-        std::cout << boost::format("%+10s") % "inf";
-      else if (gradientHs[i] < -1000)
-        std::cout << boost::format("%+10s") % "-inf";
-      else
-        std::cout << boost::format("%10.4f") % gradientHs[i];
+      formatNum(gradientHs[i]);
     }
     std::cout << std::endl;
 
-    std::cout << "deltaH: ";
+    std::cout << "deltaH   : ";
     for (std::size_t i = 0; i < W_.rows(); ++i)
     {
-      if (deltaH[i] > 1000)
-        std::cout << boost::format("%+10s") % "inf";
-      else if (deltaH[i] < -1000)
-        std::cout << boost::format("%+10s") % "-inf";
-      else
-        std::cout << boost::format("%10.4f") % deltaH[i];
+      formatNum(deltaH[i]);
+    }
+    std::cout << "   if deltaH < 0 then weight = 1" << std::endl;
+
+    std::cout << "weight   : ";
+    double tmp;
+    for (std::size_t i = 0; i < W_.rows(); ++i)
+    {
+      tmp = pow(1/W_(i),2);
+      formatNum(tmp);
     }
     std::cout << std::endl;
 
-    std::cout << "weight: ";
+    std::cout << "W^(-1)   : " << MOVEIT_CONSOLE_COLOR_BLUE;
     for (std::size_t i = 0; i < W_.rows(); ++i)
     {
-      if (fabs(W_(i)) > 1000)
-        std::cout << boost::format("%+10s") % "inf";
-      else
-        std::cout << boost::format("%10.4f") % W_(i);
+      std::cout << boost::format("%10.4f") % W_(i);
     }
-    std::cout << std::endl;
-
-    std::cout << "W^(-1): ";
-    for (std::size_t i = 0; i < W_.rows(); ++i)
-    {
-      std::cout << boost::format("%10.4f") % (1/sqrt(W_(i)));
-    }
-    std::cout << std::endl;
+    std::cout << std::endl << MOVEIT_CONSOLE_COLOR_RESET;
   }
 
-
-  //J = J*W^(-1)*J^(T)
-  /*
-  W_.print();
-  jacobian.print();
-
-  Eigen::MatrixXd tempy = jacobian.data * Eigen::DiagonalMatrix<double,Eigen::Dynamic>(W_.data.asDiagonal());
- 
-  print(tempy);
-
-  tempy = tempy * jacobian.data.transpose();
-  
-  print(tempy);
-  */
 
   // Apply weighting matrix to jacobian
   // J_w = J*W^(-1/2)
@@ -611,7 +586,7 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
     {
       for (std::size_t j = 0; j < jacobian.columns(); ++j)
       {
-        jacobian(i,j) *= 1/sqrt(W_(j)); 
+        jacobian(i,j) *= W_(j);
       }
     }
   }
@@ -680,5 +655,14 @@ void IkSolverPinverse::print(Eigen::VectorXd &data) const
   std::cout << "======================= " << std::endl;
 }
 
+void IkSolverPinverse::formatNum(double num) const
+{
+  if (num >= 1000)
+    std::cout << boost::format("%+10s") % "inf";
+  else if (num <= -1000)
+    std::cout << boost::format("%+10s") % "-inf";
+  else
+    std::cout << boost::format("%10.4f") % num;
+}
 
 } // namespace

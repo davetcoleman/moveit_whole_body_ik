@@ -236,6 +236,9 @@ public:
    */
   const bool supportsGroup(const moveit::core::JointModelGroup *jmg, std::string* error_text_out = NULL) const;
 
+  // Simple helper
+  void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k) const;
+
 protected:
 
   /**
@@ -355,11 +358,9 @@ private:
 
   moveit_msgs::KinematicSolverInfo ik_group_info_; /** Stores information for the inverse kinematics solver */
 
-  moveit_msgs::KinematicSolverInfo fk_group_info_; /** Store information for the forward kinematics solver */
-
   unsigned int dimension_; /** Dimension of the group */
 
-  KDL::JntArray joint_min_, joint_max_; /** Joint limits */
+  KDL::JntArray joint_min_, joint_max_, joint_vel_max_; /** Joint limits */
 
   robot_model::RobotModelPtr robot_model_;
 
@@ -369,11 +370,12 @@ private:
   int max_solver_iterations_;
 
   // Parameters
-  double ee_pos_vel_limit_; // maximum allowed input positional velocity of the end effector before limiting
-  double ee_rot_vel_limit_; // maximum allowed input rotational velocity of the end effector before limiting
+  double ee_pos_vel_limit_; // maximum allowed input positional velocity of the end effector before limiting, in meters
+  double ee_rot_vel_limit_; // maximum allowed input rotational velocity of the end effector before limiting, in meters
   double epsilon_; // threshold of similiarity of desired ee pose and solved ee pose
   double joint_limit_offset_; // amount to move the joint away from the limit when the limit is hit. setting to zero will cause nan to occur in calculations
   double null_space_vel_gain_; // k, the amount the null space calculation affects the overall velocity gain
+  double joint_velocity_max_ratio_; // the fraction of a joint's total range that it is allowed to move per iteration
 
   bool verbose_; // show debug info
   bool debug_mode_; // math debug info, similar to euslisp's version
@@ -394,12 +396,14 @@ private:
         qdot_cache_(dimension),
         prev_H_(dimension),
         delta_twists_( num_poses * 6 ),
+        delta_twists_debug_( num_poses * 6 ),
         jacobian_(dimension, num_poses * 6) // TODO fix
     {}
     KDL::Twist delta_twist_; // velocity and rotational velocity
     KDL::JntArray delta_twists_; // multiple twists from different end effectors, each of which have 6 dof
+    KDL::JntArray delta_twists_debug_; // store info about each twist if it was limited
     KDL::JntArray qdot_;
-    KDL::JntArray qdot_cache_;
+    KDL::JntArray qdot_cache_; // used for terminating a guess early if it appears to be stagnant
     KDL::JntArray prev_H_; // track the change in performance criterion
     KDL::Frame current_pose_;
     KDL::Jacobian2d jacobian_;

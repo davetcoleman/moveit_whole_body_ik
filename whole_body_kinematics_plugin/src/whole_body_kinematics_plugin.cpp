@@ -124,8 +124,9 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   nh_.param(group_name_ + "/kinematics_solver_max_solver_iterations", max_solver_iterations_, 500);
   nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
   nh_.param(group_name_ + "/kinematics_solver_ee_pos_vel_limit", ee_pos_vel_limit_, 0.1);
-  nh_.param(group_name_ + "/kinematics_solver_ee_rot_vel_limit", ee_rot_vel_limit_, 0.1);
+  nh_.param(group_name_ + "/kinematics_solver_ee_rot_vel_limit", ee_rot_vel_limit_, 1.5);
   nh_.param(group_name_ + "/kinematics_solver_null_space_vel_gain", null_space_vel_gain_, 0.001);
+  nh_.param(group_name_ + "/kinematics_solver_joint_velocity_max_ratio", joint_velocity_max_ratio_, 0.1);
 
   nh_.param(group_name_ + "/kinematics_solver_verbose", verbose_, false);
   nh_.param(group_name_ + "/kinematics_solver_debug_mode", debug_mode_, false);
@@ -213,10 +214,6 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     }
   }
 
-  // Copy data to FK version
-  fk_group_info_.joint_names = ik_group_info_.joint_names;
-  fk_group_info_.limits = ik_group_info_.limits;
-
   // Make sure all the tip links are in the link_names vector
   for (std::size_t i = 0; i < tip_frames_.size(); ++i)
   {
@@ -227,15 +224,17 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     }
     ik_group_info_.link_names.push_back(tip_frames_[i]);
   }
-  fk_group_info_.link_names = joint_model_group_->getLinkModelNames();
 
   // Populate the joint limits
   joint_min_.resize(ik_group_info_.limits.size());
   joint_max_.resize(ik_group_info_.limits.size());
+  joint_vel_max_.resize(ik_group_info_.limits.size());
   for(unsigned int i=0; i < ik_group_info_.limits.size(); i++)
   {
     joint_min_(i) = ik_group_info_.limits[i].min_position;
     joint_max_(i) = ik_group_info_.limits[i].max_position;
+    // Used for limiting a joint's velocity
+    joint_vel_max_(i) = fabs(joint_max_(i) - joint_min_(i)) * joint_velocity_max_ratio_;
   }
 
   // Setup the joint state groups that we need
@@ -483,20 +482,6 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   // should never get here
 }
 
-// Convert Eigen::Affine3d to KDL::Frame
-void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k)
-{
-  // Set position
-  for (unsigned int i = 0; i < 3; ++i)
-    k.p[i] = e.matrix()(i,3);
-
-  // Set orientation
-  for (unsigned int i = 0; i < 9; ++i)
-    k.M.data[i] = e.matrix()(i/3,i%3);
-
-  //k.M.data[i] = t.getBasis()[i/3][i%3];
-}
-
 /* \brief Implementation of a general inverse position kinematics algorithm based on Newton-Raphson iterations to calculate the
  *  position transformation from Cartesian to joint space of a general KDL::Chain. Takes joint limits into account. */
 int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init, const std::vector<KDL::Frame>& kdl_poses, KDL::JntArray& q_out, std::size_t &total_loops) const
@@ -528,13 +513,12 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     {
       std::cout << "------------------------------------------------------------" << std::endl;
       std::cout << "loop:   " << solver_iteration << " of " << max_solver_iterations_ << std::endl;
-      std::cout << "union-link-list:  (";
+      std::cout << "tips:   ";
       for (std::size_t i = 0; i < ik_group_info_.link_names.size(); ++i)
       {
         std::cout << ik_group_info_.link_names[i] << " ";
       }
-      std::cout << ")" << std::endl;
-      std::cout << "move-target: ?? " << std::endl;
+      std::cout << std::endl;
     }
 
     if (!ros::ok())
@@ -553,8 +537,19 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
-      ros::Duration(0.1).sleep();
+      ros::Duration(0.25).sleep();
     }
+
+    /*
+      if (debug_mode_)
+      {
+      // reset the debug array for twist limiting
+      for (std::size_t i = 0; i < ctj_data_->delta_twists_debug_.rows(); ++i)
+      {
+      ctj_data_->delta_twists_debug_(i) = 0;
+      }
+      }
+    */
 
     // For each end effector
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
@@ -575,21 +570,56 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), epsilon_))
         all_poses_valid = false;
 
-      // Limit the twist (end effector position and rotational velocity)
-      if (false)
+
+      // Limit the end effector positional velocity
+      KDL::Vector &pos_vel = ctj_data_->delta_twist_.vel;
+
+      // Debug record
+      if (debug_mode_)
       {
-        KDL::Vector &pos_vel = ctj_data_->delta_twist_.vel;
-        pos_vel.print();
-        double p_limit = 0.1; // meters
-        if (pos_vel.x() > p_limit || pos_vel.y() > p_limit || pos_vel.z() > p_limit)
+        ctj_data_->delta_twists_debug_( TWIST_SIZE * pose_id + 0 ) = pos_vel.x();
+        ctj_data_->delta_twists_debug_( TWIST_SIZE * pose_id + 1 ) = pos_vel.y();
+        ctj_data_->delta_twists_debug_( TWIST_SIZE * pose_id + 2 ) = pos_vel.z();
+      }
+
+      if (true)
+      {
+        //pos_vel.print();
+        if (pos_vel.x() > ee_pos_vel_limit_ || pos_vel.y() > ee_pos_vel_limit_ || pos_vel.z() > ee_pos_vel_limit_)
         {
           // Normalize the vector
-          std::cout << "Normalizing: " << std::endl;
+          //std::cout << "Normalizing: " << std::endl;
           pos_vel.Normalize();
-          pos_vel.print();
-          pos_vel = pos_vel * p_limit;
+          //pos_vel.print();
+          pos_vel = pos_vel * ee_pos_vel_limit_;
+
         }
-        pos_vel.print();
+        //pos_vel.print();
+      }
+
+      // Limit the end effector rotational velocity
+      KDL::Vector &rot_vel = ctj_data_->delta_twist_.rot;
+
+      // Debug record
+      if (debug_mode_)
+      {
+        ctj_data_->delta_twists_debug_( TWIST_SIZE * pose_id + 3 ) = rot_vel.x();
+        ctj_data_->delta_twists_debug_( TWIST_SIZE * pose_id + 4 ) = rot_vel.y();
+        ctj_data_->delta_twists_debug_( TWIST_SIZE * pose_id + 5 ) = rot_vel.z();
+      }
+
+      if (true)
+      {
+        //rot_vel.print();
+        if (rot_vel.x() > ee_rot_vel_limit_ || rot_vel.y() > ee_rot_vel_limit_ || rot_vel.z() > ee_rot_vel_limit_)
+        {
+          // Normalize the vector
+          //std::cout << "Normalizing: " << std::endl;
+          rot_vel.Normalize();
+          //rot_vel.print();
+          rot_vel = rot_vel * ee_rot_vel_limit_;
+        }
+        //rot_vel.print();
       }
 
       // Add this twist to our large twist vector from multiple end effectors
@@ -604,62 +634,57 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     // See twist delta
     if (debug_mode_)
     {
-      // Positional Velocity
-      std::cout << "vel-pos : ";
-      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); i += 6) // skip through every eeef
+      // Input Velocity Limit Usagae
+      std::cout << "xdot_orig: " << MOVEIT_CONSOLE_COLOR_RED;
+      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
       {
-        for (std::size_t j = 0; j < 3; ++j)
-        {
-          std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(j+i);
-        }
+        if (ctj_data_->delta_twists_debug_(i) != ctj_data_->delta_twists_(i))
+          std::cout << boost::format("%10.4f") % ctj_data_->delta_twists_debug_(i);
+        else
+          std::cout << boost::format("%+10s") % " ";
       }
-      std::cout << std::endl;
+      std::cout << std::endl << MOVEIT_CONSOLE_COLOR_RESET;
 
-      // Rotational Velocity
-      std::cout << "vel-rot : ";
-      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); i += 6) // skip through every eeef
+      // Input Velocity
+      std::cout << "xdot_in  : ";
+      for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
       {
-        for (std::size_t j = 3; j < 6; ++j)
-        {
-          std::cout << boost::format("%12.5f") % ctj_data_->delta_twists_(j+i);
-        }
+        std::cout << boost::format("%10.4f") % ctj_data_->delta_twists_(i);
       }
       std::cout << std::endl;
 
       // Min Joint Value
-      std::cout << " min  : " ;
+      std::cout << "  jnt min: " ;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.3f") % (joint_min_(i)); // * 57.2957795);
+        std::cout << boost::format("%10.4f") % (joint_min_(i)); // * 57.2957795);
       }
       //std::cout << "   (degrees)" << std::endl;
       std::cout << std::endl;
 
       // Angle
-      std::cout << "angle : " ;
+      std::cout << "jnt angle: " ;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.3f") % (q_out(i)); // * 57.2957795);
+        std::cout << boost::format("%10.4f") % (q_out(i)); // * 57.2957795);
       }
       //std::cout << "   (degrees)" << std::endl;
       std::cout << std::endl;
 
       // Max Joint Value
-      std::cout << " max  : " ;
+      std::cout << "  jnt max: " ;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
-        std::cout << boost::format("%10.3f") % (joint_max_(i)); // * 57.2957795);
+        std::cout << boost::format("%10.4f") % (joint_max_(i)); // * 57.2957795);
       }
       //std::cout << "   (degrees)" << std::endl;
       std::cout << std::endl;
 
       // Percent close to limits
-      std::cout << "limit : " ;
+      std::cout << "limit %  : " ;
       for (std::size_t i = 0; i < q_out.rows(); ++i)
       {
         double value = fabs(q_out(i) - joint_min_(i)) / fabs(joint_max_(i) - joint_min_(i)) * 100;
-        //if (value > 50)
-        //  value = 100 - value;
 
         // Show numbers red if too close to joint limits
         if (value < 0.2 || value > 99.8)
@@ -667,11 +692,35 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
         else
           std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
 
-        std::cout << boost::format("%10.3f") % value;
+        std::cout << boost::format("%10.4f") % value;
 
         std::cout << MOVEIT_CONSOLE_COLOR_RESET;
       }
       std::cout << "   (percent)" << std::endl;
+
+
+      double desired[7] = {-1.39477, 1.6529, 0.70755, -0.12871, -1.84963, -1.19424, -0.634789};
+
+      // Desired percent
+      std::cout << "desired %: " ;
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        double value = fabs(desired[i] - joint_min_(i)) / fabs(joint_max_(i) - joint_min_(i)) * 100;
+
+        // Show numbers red if too close to joint limits
+        if (value < 0.2 || value > 99.8)
+          std::cout << MOVEIT_CONSOLE_COLOR_RED;
+        else
+          std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
+
+        std::cout << boost::format("%10.4f") % value;
+
+        std::cout << MOVEIT_CONSOLE_COLOR_RESET;
+      }
+      std::cout << "   (percent)" << std::endl;
+
+
+
 
       // User Weight
       //std::cout << "usrwei:    " << std::endl;
@@ -744,7 +793,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
           ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Giving up because no change detected");
         }
         debug_would_have_stopped = true;
-        break; // disable this to keep going
+        //break; // disable this to keep going
       }
     }
 
@@ -762,15 +811,54 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       }
     }
 
+    // Show joint velocity limit
+    if (debug_mode_)
+    {
+      std::cout << "qdot_limt: ";
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        std::cout << boost::format("%10.4f") % joint_vel_max_(i);
+      }
+      std::cout << std::endl;
+    }
+
+    // Limit the joint velocity qdot_out
+    double qdot_diff_;
+    double qdot_diff_max_ = 0;
+    for (std::size_t i = 0; i < q_out.rows(); ++i)
+    {
+      if (fabs(ctj_data_->qdot_(i) / joint_vel_max_(i)) > qdot_diff_max_)
+      {
+        qdot_diff_max_ = fabs(ctj_data_->qdot_(i) / joint_vel_max_(i));
+      }
+    }
+
+    if (debug_mode_)
+      std::cout << "qdot_new : " << MOVEIT_CONSOLE_COLOR_RED;
+    if (qdot_diff_max_ >= 1) // only apply limit if at least one joint is over its limit
+    {
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
+        ctj_data_->qdot_(i) /= qdot_diff_max_;
+        if (debug_mode_)
+          std::cout << boost::format("%10.4f") % ctj_data_->qdot_(i);
+      }
+    }
+    if (debug_mode_)
+      std::cout << std::endl << MOVEIT_CONSOLE_COLOR_RESET;
+
+
+
     // Add current guess 'q_out' with our new change in guess qdot (delta q)
     // q_out = q_out + q_dot
     // Add(q_out, ctj_data_->qdot_, q_out);
     q_out.data = q_out.data + ctj_data_->qdot_.data;
 
-    if (debug_mode_)
-      std::cout << "limit : ";
+
 
     // Enforce joint limits
+    if (debug_mode_)
+      std::cout << "limit enf: " << MOVEIT_CONSOLE_COLOR_RED;
     for (unsigned int j = 0; j < q_out.rows(); j++)
     {
       if (q_out(j) < joint_min_(j))
@@ -790,7 +878,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
         std::cout << boost::format("%+10s") % " ";
     }
     if (debug_mode_)
-      std::cout << std::endl;
+      std::cout << std::endl << MOVEIT_CONSOLE_COLOR_RESET;
 
 
     // TEMP TODO
@@ -836,6 +924,19 @@ const bool WholeBodyKinematicsPlugin::supportsGroup(const moveit::core::JointMod
 {
   return true;
 }
+
+// Convert Eigen::Affine3d to KDL::Frame
+void WholeBodyKinematicsPlugin::poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k) const
+{
+  // Set position
+  for (unsigned int i = 0; i < 3; ++i)
+    k.p[i] = e.matrix()(i,3);
+
+  // Set orientation
+  for (unsigned int i = 0; i < 9; ++i)
+    k.M.data[i] = e.matrix()(i/3,i%3);
+}
+
 
 
 } // namespace

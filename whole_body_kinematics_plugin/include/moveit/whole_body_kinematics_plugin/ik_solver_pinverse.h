@@ -105,6 +105,7 @@ public:
 
   void print(Eigen::MatrixXd &data) const;
   void print(Eigen::VectorXd &data) const;
+  void formatNum(double num) const;
 
 private:
   //  Jacobian2d jacobian;
