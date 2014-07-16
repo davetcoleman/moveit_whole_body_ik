@@ -76,12 +76,12 @@ public:
    *
    */
   IkSolverPinverse(int num_tips, int num_joints, JntArray joint_min, JntArray joint_max, JntArray weights, const Jacobian2d& jacobian,
-    double eps=0.00001,int maxiter=150, double null_space_velocity_gain = 0.25, bool verbose = false);
+    double eps=0.00001,int maxiter=150, bool verbose = false);
 
   ~IkSolverPinverse() {};
 
   int cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, 
-    JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration);
+                       JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration, double &null_space_vel_gain);
 
   bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H, bool debug_mode, bool is_first_iteration);
 
@@ -94,14 +94,6 @@ public:
   int setWeights(const JntArray &weights);
 
   int setAllWeights(const double &weight);
-
-  /**
-   *Set null psace velocity gain
-   *
-   *@param null_space_velocity_gain NUllspace velocity cgain
-   *
-   */
-  int setNullSpaceVelGain(const double null_space_vel_gain);
 
   void print(Eigen::MatrixXd &data) const;
   void print(Eigen::VectorXd &data) const;
@@ -119,7 +111,6 @@ private:
   double eps;
   int maxiter;
 
-  double null_space_vel_gain_;
   JntArray weights_;
   JntArray W_; // weighting matrix
   JntArray joint_min;

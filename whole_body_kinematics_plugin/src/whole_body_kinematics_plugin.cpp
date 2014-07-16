@@ -123,6 +123,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");
   nh_.param(group_name_ + "/kinematics_solver_max_solver_iterations", max_solver_iterations_, 500);
   nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
+  nh_.param(group_name_ + "/kinematics_solver_null_space_epsilon", null_space_epsilon_, 1e-3);
   nh_.param(group_name_ + "/kinematics_solver_ee_pos_vel_limit", ee_pos_vel_limit_, 0.1);
   nh_.param(group_name_ + "/kinematics_solver_ee_rot_vel_limit", ee_rot_vel_limit_, 1.5);
   nh_.param(group_name_ + "/kinematics_solver_null_space_vel_gain", null_space_vel_gain_, 0.001);
@@ -272,7 +273,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // inverse velocity kinematics algorithm based on the generalize pseudo inverse to calculate the velocity
   ik_solver_vel_.reset(new IkSolverPinverse(tip_frames.size(), dimension_, joint_min_, joint_max_,
-                                            weights, ctj_data_->jacobian_, eps, maxiter, null_space_vel_gain_, verbose_));
+                                            weights, ctj_data_->jacobian_, eps, maxiter, verbose_));
 
   ROS_DEBUG_NAMED("whole_body_ik","MoveIt! Whole Body IK solver initialized");
   return true;
@@ -502,6 +503,9 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     ctj_data_->prev_H_(i) = 0.0;
   }
 
+  // Make a writeable copy so that we can reduce this gain as iterations continue
+  double null_space_vel_gain = null_space_vel_gain_;
+
   // Start main loop
   std::size_t solver_iteration; // Iterate on approximate guess of joint values 'q_out'
   for (  solver_iteration = 0; solver_iteration < max_solver_iterations_; solver_iteration++ )
@@ -540,17 +544,6 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       ros::Duration(0.25).sleep();
     }
 
-    /*
-      if (debug_mode_)
-      {
-      // reset the debug array for twist limiting
-      for (std::size_t i = 0; i < ctj_data_->delta_twists_debug_.rows(); ++i)
-      {
-      ctj_data_->delta_twists_debug_(i) = 0;
-      }
-      }
-    */
-
     // For each end effector
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
     {
@@ -570,6 +563,12 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       if (!Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), epsilon_))
         all_poses_valid = false;
 
+      // Check if the difference between our desired pose and current pose is within our secondary tolerance
+      if (Equal(ctj_data_->delta_twist_, KDL::Twist::Zero(), null_space_epsilon_))
+      {
+        ROS_ERROR_STREAM_NAMED("temp","Within null space epsilon!");
+        null_space_vel_gain *= 0.05;
+      }
 
       // Limit the end effector positional velocity
       KDL::Vector &pos_vel = ctj_data_->delta_twist_.vel;
@@ -759,7 +758,8 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     // Run velocity solver - qdot is returned as the joint velocities (delta q)
     // (change in joint value guess)
     if (ik_solver_vel_->cartesianToJoint(q_out, ctj_data_->delta_twists_, ctj_data_->jacobian_,
-                                         ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_, solver_iteration == 0) != 1)
+                                         ctj_data_->qdot_, ctj_data_->prev_H_, debug_mode_, solver_iteration == 0, 
+                                         null_space_vel_gain) != 1)
     {
       ROS_ERROR_STREAM_NAMED("newtonRaphsonIterator","Error in ik solver pinverse");
       return -1;

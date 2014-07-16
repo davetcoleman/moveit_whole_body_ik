@@ -373,6 +373,7 @@ private:
   double ee_pos_vel_limit_; // maximum allowed input positional velocity of the end effector before limiting, in meters
   double ee_rot_vel_limit_; // maximum allowed input rotational velocity of the end effector before limiting, in meters
   double epsilon_; // threshold of similiarity of desired ee pose and solved ee pose
+  double null_space_epsilon_; // threshold for when ee pose and solved pose are close enough that we should reduce influence of the null space projection
   double joint_limit_offset_; // amount to move the joint away from the limit when the limit is hit. setting to zero will cause nan to occur in calculations
   double null_space_vel_gain_; // k, the amount the null space calculation affects the overall velocity gain
   double joint_velocity_max_ratio_; // the fraction of a joint's total range that it is allowed to move per iteration

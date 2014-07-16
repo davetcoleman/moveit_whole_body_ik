@@ -46,7 +46,7 @@ namespace whole_body_kinematics_plugin
 {
 
 IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joint_min, JntArray _joint_max,
-                                   JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, double null_space_vel_gain, bool verbose)
+                                   JntArray weights, const Jacobian2d& jacobian, double _eps, int _maxiter, bool verbose)
   :
   // Load the jacobian to have #joint ROWS x #tips COLS
   //  jacobian(_num_joints, _num_tips*6),
@@ -59,7 +59,6 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
   tmp2(_num_joints-6*_num_tips),
   eps(_eps),
   maxiter(_maxiter),
-  null_space_vel_gain_(null_space_vel_gain),
   num_tips(_num_tips),
   weights_(weights),
   W_(_num_joints),
@@ -104,16 +103,22 @@ IkSolverPinverse::IkSolverPinverse(int _num_tips, int _num_joints, JntArray _joi
  * \param prev_H - contains the previous performance criterion
  7 */
 int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian,
-                                       JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration)
+                                       JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration, double &null_space_vel_gain)
 {
   // weights:
   bool use_wln = true;
   // inverse methods:
   bool use_psm = true; // HRP
   bool use_kdl = false;
-  bool use_kdl2 = false;
   // null space:
-  bool use_gpm = true; // not with use_kdl
+  bool use_gpm = true;
+
+  // Automatically stop calculating gpm if null_space_vel_gain is below threshold to save calculations
+  if (null_space_vel_gain < 0.0001)
+  {
+    std::cout << "SKIPPING NULL SPACE PROJECTION BECAUSE GAIN IS TOO LOW!!!! " << std::endl;
+    use_gpm = false;
+  }
 
   unsigned int i,j;
   double sum;
@@ -188,58 +193,8 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     }
   }
 
-  // Method 2: Do SVD faster using the KDL method ---------------------------------------------
+  // Method 2: Do SVD faster using the KDL method but directly calc pseudo invers---------------------------------------------
   if (use_kdl)
-  {
-    //Do a singular value decomposition of "jacobian" with maximum
-    //iterations "maxiter", put the results in "U", "S" and "V"
-    //jacobian = U*S*Vt
-    svd_.calculate(jacobian,U,S,V,maxiter);
-
-    // We have to calculate qdot_out = jac_pinv*xdot_in
-    // Using the svd decomposition this becomes(jac_pinv=V*S_pinv*Ut):
-    // qdot_out = V*S_pinv*Ut*xdot_in
-
-    //first we calculate S_pinv*Ut*xdot_in
-    for (i = 0;i < jacobian.columns();i++)
-    {
-      sum = 0.0;
-      for (j = 0;j < jacobian.rows();j++)
-      {
-        sum += U[j](i) * xdot_in(j);
-      }
-      //If the singular value is too small (<eps), don't invert it but
-      //set the inverted singular value to zero (truncated svd)
-      if ( fabs(S(i)) < eps )
-      {
-        tmp(i) = 0.0 ;
-      }
-      else
-      {
-        tmp(i) = sum/S(i) ;
-      }
-    }
-
-    //tmp is now: tmp=S_pinv*Ut*xdot_in, we still have to premultiply
-    //it with V to get qdot_out
-    for (i = 0;i < jacobian.columns();i++)
-    {
-      sum = 0.0;
-      for (j = 0;j < jacobian.columns();j++)
-      {
-        sum += V[i](j) * tmp(j);
-      }
-
-      //Put the result in qdot_out
-      if (use_wln && !is_first_iteration)
-        qdot_out(i) = W_(i) * sum;
-      else
-        qdot_out(i) = sum;
-    }
-  }
-
-  // Method 3: Do SVD faster using the KDL method but directly calc pseudo invers---------------------------------------------
-  if (use_kdl2)
   {
     //Do a singular value decomposition of "jacobian" with maximum
     //iterations "maxiter", put the results in "U", "S" and "V"
@@ -405,7 +360,7 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
     {
       // Scalar of null space component
       std::cout << "null_gain: ";
-      std::cout << boost::format("%10.4f") % null_space_vel_gain_;
+      std::cout << boost::format("%10.4f") % null_space_vel_gain;
       std::cout << std::endl;
 
       // Performance criterion
@@ -417,55 +372,8 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
       std::cout << std::endl;
     }
 
-
-    bool this_verbose = false;
-    if (this_verbose)
-    {
-      std::cout << std::endl  << "Identity " << std::endl;
-      print(identity_);
-      std::cout << std::endl  << "pinverse: " << std::endl;
-      print(pinverse_);
-      std::cout << std::endl  << "Jacobian: " << std::endl;
-      jacobian.print();
-      std::cout << std::endl  << "H criterion: " << std::endl;
-      H_.print();
-      std::cout << std::endl  << "Null_Space_Vel_Gain: " << null_space_vel_gain_ << std::endl;
-
-
-      std::cout << "J^+ * J" << std::endl;
-      tmp3_ = (pinverse_ * jacobian.data);
-      print(tmp3_);
-
-      std::cout << "I - J^+ * J" << std::endl;
-      tmp3_ = (identity_ - pinverse_ * jacobian.data);
-      print(tmp3_);
-
-      // temp H
-      /*
-        Eigen::VectorXd tempH;
-        tempH.resize(H.data.rows(),1);
-        tempH[3] = 1;
-        std::cout << "H tmp " << std::endl;
-        print(tempH);
-      */
-
-      std::cout << "* H " << std::endl;
-      tmp3_ = (identity_ - pinverse_ * jacobian.data) * H_.data;
-      print(tmp3_);
-
-    }
-
     // qdot += k(I - J^(+)*J)
-    tmp3_ = null_space_vel_gain_ * (identity_ - pinverse_ * jacobian.data) * H_.data;  // TODO is this jacobian already weighted?
-
-    if (this_verbose)
-    {
-      std::cout << std::endl  << "QDot before null space componet:" << std::endl;
-      qdot_out.print();
-
-      std::cout << std::endl  << "Null space component: " << std::endl;
-      print(tmp3_);
-    }
+    tmp3_ = null_space_vel_gain * (identity_ - pinverse_ * jacobian.data) * H_.data;  // TODO is this jacobian already weighted?
 
     // Apply the null space
     qdot_out.data += tmp3_;
@@ -605,12 +513,6 @@ int IkSolverPinverse::setAllWeights(const double &weight)
   for(unsigned int i=0; i < weights_.rows(); i++)
     weights_(i) = weight;
 
-  return 0;
-}
-
-int IkSolverPinverse::setNullSpaceVelGain(const double null_space_vel_gain)
-{
-  null_space_vel_gain_ = null_space_vel_gain;
   return 0;
 }
 
