@@ -19,7 +19,7 @@ Developed by [Dave Coleman](dave@dav.ee) while at the University of Tokyo JSK la
 
 ## kinematics.yaml
 
-Make your ``kinematics.yaml`` look something like this:
+Your ``kinematics.yaml`` should have each group name listed with the correct solver and the desired tips (end effectors) that you wish to solve for:
 
 ```
 whole_body_fixed:
@@ -33,9 +33,11 @@ whole_body_fixed:
 
 ### Optional Parameters
 
+Additionally you can customize the performance with the following parameters:
+
 ```
 kinematics_solver_max_solver_iterations:   # iterations for newton raphson method before trying a different seed state
-kinematics_solver_timeout: 100             # amount of time allowed before giving up
+kinematics_solver_timeout:                 # amount of time allowed before giving up
 kinematics_solver_verbose:                 # show lots of console output 
 kinematics_solver_debug_mode:              # similar to verbose but only shows matrix-related math debug output
 kinematics_solver_visualize_search:        # publish to rviz every step of the solver
@@ -64,7 +66,7 @@ Note: this code assumes your jmg (joint model group) is in this order:
    LEG
    LEG
 
-if its not, im not sure what will happen
+If its not, im not sure what will happen
    
 It also assumes your left & right arms each share ``n`` number of torso joints, and those are the only shared joints on the whole robot
   
