@@ -394,7 +394,7 @@ bool WholeBodyKinematicsPlugin::searchPositionIK(const std::vector<geometry_msgs
   while(true)
   {
     if (verbose_ || true)
-      ROS_DEBUG_NAMED("searchPositionIK","Iteration: %d, time: %f, Timeout: %f", total_loops, (ros::WallTime::now()-n1).toSec(),timeout);
+      ROS_DEBUG_NAMED("searchPositionIK","Iteration: %d, time: %f, Timeout: %f", int(total_loops), (ros::WallTime::now()-n1).toSec(),timeout);
     counter++;
 
     // Check if timed out
@@ -539,7 +539,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     {
       // Publish
       visual_tools_->publishRobotState(robot_state_);
-      ros::Duration(0.1).sleep();
+      ros::Duration(2.1).sleep();
     }
 
     // For each end effector
@@ -628,6 +628,14 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     // See twist delta
     if (debug_mode_)
     {
+      // Show End effector name
+      std::cout << "eef     :      ";
+      for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
+      {
+        std::cout << boost::format("%-60s") % tip_frames_[pose_id];
+      }
+      std::cout << std::endl;
+
       // Input Velocity Limit Usagae
       std::cout << "xdot_orig: " << MOVEIT_CONSOLE_COLOR_RED;
       for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
@@ -644,6 +652,21 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       for (std::size_t i = 0; i < ctj_data_->delta_twists_.rows(); ++i)
       {
         std::cout << boost::format("%10.4f") % ctj_data_->delta_twists_(i);
+      }
+      std::cout << std::endl;
+
+      // Joint names
+      std::cout << "joint    :     ";
+      for (std::size_t i = 0; i < dimension_; i+=2)
+      {
+        std::cout << boost::format("%-20s") % joint_model_group_->getVariableNames()[i];
+      }
+      std::cout << std::endl;
+
+      std::cout << "                         ";
+      for (std::size_t i = 1; i < dimension_; i+=2)
+      {
+        std::cout << boost::format("%-20s") % joint_model_group_->getVariableNames()[i];
       }
       std::cout << std::endl;
 
@@ -692,27 +715,25 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
       }
       std::cout << "   (percent)" << std::endl;
 
-      /*
-        double desired[7] = {-1.39477, 1.6529, 0.70755, -0.12871, -1.84963, -1.19424, -0.634789};
+      double desired[16] = {-0.100539, 0.122703, -3.03299, 1.5326, 0.159486, -0.0918993, -0.239314, -0.0489768, -0.255731, -1.79893, -1.05269, -1.10977, -1.89462, 0.735812, 0.383027, -1.22049};
 
-        // Desired percent
-        std::cout << "desired %: " ;
-        for (std::size_t i = 0; i < q_out.rows(); ++i)
-        {
+      // Desired percent
+      std::cout << "desired %: " ;
+      for (std::size_t i = 0; i < q_out.rows(); ++i)
+      {
         double value = fabs(desired[i] - joint_min_(i)) / fabs(joint_max_(i) - joint_min_(i)) * 100;
 
         // Show numbers red if too close to joint limits
         if (value < 0.2 || value > 99.8)
-        std::cout << MOVEIT_CONSOLE_COLOR_RED;
+          std::cout << MOVEIT_CONSOLE_COLOR_RED;
         else
-        std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
+          std::cout << MOVEIT_CONSOLE_COLOR_GREEN;
 
         std::cout << boost::format("%10.4f") % value;
 
         std::cout << MOVEIT_CONSOLE_COLOR_RESET;
-        }
-        std::cout << "   (percent)" << std::endl;
-      */
+      }
+      std::cout << "   (percent)" << std::endl;
 
       // User Weight
       //std::cout << "usrwei:    " << std::endl;

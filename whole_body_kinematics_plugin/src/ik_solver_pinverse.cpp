@@ -106,12 +106,12 @@ int IkSolverPinverse::cartesianToJoint(const JntArray& q_in, const JntArray& xdo
                                        JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration, double &null_space_vel_gain)
 {
   // weights:
-  bool use_wln = true;
+  bool use_wln = false;
   // inverse methods:
   bool use_psm = true; // HRP
   bool use_kdl = false;
   // null space:
-  bool use_gpm = true;
+  bool use_gpm = false;
 
   // Copy original jacobian for later calculations TODO remove this?
   //original_jacobian = jacobian;
@@ -448,6 +448,11 @@ bool IkSolverPinverse::weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacob
     // Save gradient for next iteration to find delta
     prev_H(i) = gradientH;
   }
+
+  // Add the torso weights TODO make this not hard coded
+  double torso_weight = 0.01;
+  W_(0) *= torso_weight;
+  W_(1) *= torso_weight;
 
   if (debug_mode)
   {
