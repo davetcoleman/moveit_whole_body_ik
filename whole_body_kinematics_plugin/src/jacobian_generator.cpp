@@ -98,7 +98,8 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
       ik_group.locked_joints_[1] = true;
 
       // This new_group is a pure, regular kinematic chain (no shared joints)
-      ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
+      if (verbose_)
+        ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
       chains_.push_back( ik_group );
     }
     else
@@ -117,7 +118,7 @@ bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>
   }
 
   // Debug
-  if (verbose_ || true)
+  if (verbose_)
   {
     std::cout << MOVEIT_CONSOLE_COLOR_CYAN << std::endl  << "Overview of created IK chain groups: " << std::endl;
     for (std::size_t i = 0; i < chains_.size(); ++i)
@@ -244,11 +245,13 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
       std::size_t joint_id;
       for (joint_id = 0; joint_id < std::min(this_group->getJointModels().size(),that_group->getJointModels().size()); ++joint_id)
       {
+          if (verbose_)
+          {
         std::cout << "Joint of group " << this_group->getName() << " id " << joint_id
                   << " is " << this_group->getJointModels()[joint_id]->getName() << std::endl;
         std::cout << "   Compared to " << that_group->getName() << " id " << joint_id
                   << " is " << that_group->getJointModels()[joint_id]->getName() << std::endl;
-
+          }
         // Note: the we are moving backwards from base, so we can terminate as soon as a non-match is found
         if ( this_group->getJointModels()[joint_id] != that_group->getJointModels()[joint_id] )
         {
@@ -261,8 +264,11 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
       // Create new kinematic chains for these subgroups
       if (shares_joints)
       {
-        std::cout << "Groups " << this_group->getName() << " and " << that_group->getName() << " have common joints" << std::endl;
-        std::cout << " --> They share joints up to joint " << joint_id << std::endl;
+        if (verbose_)
+        {
+          std::cout << "Groups " << this_group->getName() << " and " << that_group->getName() << " have common joints" << std::endl;
+          std::cout << " --> They share joints up to joint " << joint_id << std::endl;
+        }
 
         if (processed_tips[tip_id] || processed_tips[tip2_id])
         {
@@ -350,7 +356,8 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
             return false;
           }
 
-          std::cout << "Adding pure chain joint model group " << new_group->getName() << std::endl;
+          if (verbose_)
+              std::cout << "Adding pure chain joint model group " << new_group->getName() << std::endl;
 
           // Create the pure chain group
           IKChainGroup ik_group(new_group);
@@ -381,7 +388,8 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
     if (processed_tips[tip_id])
       continue;
 
-    ROS_INFO_STREAM_NAMED("jacobian_generator","Adding tip " << tip_id << " as regular chain (no shared joints)");
+    if (verbose_)
+        ROS_INFO_STREAM_NAMED("jacobian_generator","Adding tip " << tip_id << " as regular chain (no shared joints)");
 
     addChain( tip_to_jmg[tip_id], full_jac_row_location, full_jac_col_location );
   }
