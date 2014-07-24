@@ -373,7 +373,8 @@ bool JacobianGenerator::matchTipsToSubgroups(const robot_model::RobotModelPtr ro
           full_jac_col_location += new_group->getJointModels().size();
 
           // This new_group is a pure, regular kinematic chain (no shared joints)
-          ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
+          if (verbose_)
+            ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
           chains_.push_back( ik_group );
 
         }
@@ -412,7 +413,8 @@ void JacobianGenerator::addChain(const robot_model::JointModelGroup *current_gro
   full_jac_col_location += current_group->getJointModels().size();
 
   // This new_group is a pure, regular kinematic chain (no shared joints)
-  ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
+  if (verbose_)
+    ROS_DEBUG_STREAM_NAMED("jacobian_generator","Adding jacobian subgroup " << ik_group.jmg_->getName());
   chains_.push_back( ik_group );
 }
 

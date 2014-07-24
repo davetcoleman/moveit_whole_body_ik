@@ -120,7 +120,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   //bool base_frame_temp = base_frame;
 
   // Get solver parameters from param server
-  ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");
+  //ROS_DEBUG_STREAM_NAMED("initialize","Looking for IK settings on rosparam server at: " << nh_.getNamespace() << "/" << group_name_ << "/");
   nh_.param(group_name_ + "/kinematics_solver_max_solver_iterations", max_solver_iterations_, 500);
   nh_.param(group_name_ + "/kinematics_solver_epsilon", epsilon_, 1e-5);
   nh_.param(group_name_ + "/kinematics_solver_null_space_epsilon", null_space_epsilon_, 1e-3);
@@ -165,7 +165,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   }
 
   // Get the num of dimensions
-  ROS_INFO_STREAM_NAMED("temp","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
+  ROS_DEBUG_STREAM_NAMED("whole_body_ik","Found " << joint_model_group_->getActiveJointModels().size() << " active joints and "
                         << joint_model_group_->getMimicJointModels().size() << " mimic joints");
 
   dimension_ = joint_model_group_->getActiveJointModels().size();
