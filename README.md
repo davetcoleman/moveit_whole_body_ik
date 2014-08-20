@@ -9,6 +9,10 @@ Build to work with MoveIt!
 
 Developed by [Dave Coleman](dave@dav.ee) while at the University of Tokyo JSK lab in collaboration with Shunichi Nozawa and Kei Okada.
 
+### Video Demos
+
+[YouTube](https://www.youtube.com/watch?v=gN0JKimAt2Y)
+
 ### Limitations
 
  - Does not yet support mimic joints
