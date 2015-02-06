@@ -211,7 +211,8 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     }
     else
     {
-      ROS_ERROR_STREAM_NAMED("whole_body_ik","This is the Whole Body kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints");
+      
+      ROS_ERROR_STREAM_NAMED("whole_body_ik","This is the Whole Body kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints. Bad join name: " << joint_model_group_->getJointModelNames()[i];);
     }
   }
 
@@ -245,7 +246,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
   // Load the Robot Viz Tools for publishing to Rviz
   if (visualize_search_)
   {
-    visual_tools_.reset(new moveit_visual_tools::VisualTools("/odom","/hrp2_visual_markers", robot_model_));
+    visual_tools_.reset(new moveit_visual_tools::MoveItVisualTools("/odom","/hrp2_visual_markers", robot_model_));
     visual_tools_->loadRobotStatePub("/moveit_whole_body_ik");
   }
 
