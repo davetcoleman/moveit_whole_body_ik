@@ -67,7 +67,7 @@
 #include <moveit/robot_state/robot_state.h>
 
 // Helper for Rviz
-#include <moveit_visual_tools/visual_tools.h>
+#include <moveit_visual_tools/moveit_visual_tools.h>
 
 // Random numbers
 #include <random_numbers/random_numbers.h>
@@ -383,7 +383,7 @@ private:
   bool visualize_search_; // publish to rviz every step of the solver
 
   // For visualizing things in rviz
-  moveit_visual_tools::VisualToolsPtr visual_tools_;
+  moveit_visual_tools::MoveItVisualToolsPtr visual_tools_;
 
   // Velocity Pseudo Inverse Solver
   IkSolverPinversePtr ik_solver_vel_;
