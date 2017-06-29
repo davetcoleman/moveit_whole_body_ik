@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package>
   <name>moveit_whole_body_ik</name>
-  <version>0.5.18</version>
+  <version>0.5.19</version>
   <description>Non-chain inverse kinematics solver for MoveIt!</description>
 
-  <maintainer email="davetcoleman@gmail.com">Dave Coleman</maintainer>
-  <author email="davetcoleman@gmail.com">Dave Coleman</author>
+  <maintainer email="dave@dav.ee">Dave Coleman</maintainer>
 
   <license>BSD</license>
 
@@ -13,7 +12,9 @@
   <url type="butracker">https://github.com/davetcoleman/moveit_whole_body_ik/issues</url>
   <url type="repository">https://github.com/davetcoleman/moveit_whole_body_ik/</url>
 
-  <buildtool_depend>catkin</buildtool_depend> 
+  <author email="dave@dav.ee">Dave Coleman</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
 
   <build_depend>moveit_ros_robot_interaction</build_depend>
   <build_depend>moveit_core</build_depend>

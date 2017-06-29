@@ -6,9 +6,9 @@ add_library(${MOVEIT_LIB_NAME}_solver
 )
 target_link_libraries(${MOVEIT_LIB_NAME}_solver ${catkin_LIBRARIES} ${LAPACK_LIBRARIES})
 
-# Main plugin
-add_library(${MOVEIT_LIB_NAME} 
-  src/whole_body_kinematics_plugin.cpp 
+# Main plugin library
+add_library(${MOVEIT_LIB_NAME}
+  src/whole_body_kinematics_plugin.cpp
   src/jacobian_generator.cpp
   src/ik_solver_pinverse.cpp
   # KDL components
@@ -20,8 +20,6 @@ add_library(${MOVEIT_LIB_NAME}
 )
 target_link_libraries(${MOVEIT_LIB_NAME} ${MOVEIT_LIB_NAME}_solver ${catkin_LIBRARIES})
 
-
-
-
+# Install
 install(TARGETS ${MOVEIT_LIB_NAME} ${MOVEIT_LIB_NAME}_solver LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
 install(DIRECTORY include/ DESTINATION include)

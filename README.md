@@ -1,10 +1,10 @@
 MoveIt! Whole Body IK
 ====================
 
-Whole body (non-chain) inverse kinematics solver for MoveIt! for any robot. 
-Uses a weighted least-norm solution combined with the gradient projection method of the null space to avoid joint limits. 
-Calculates the psuedo inverse using Lapack's singular value decomposition (SVD) implementation. 
-Uses some componentes from the Kinematic Dynamics Library (KDL) from OROCOS. 
+Whole body (non-chain) inverse kinematics solver for MoveIt! for any robot.
+Uses a weighted least-norm solution combined with the gradient projection method of the null space to avoid joint limits.
+Calculates the psuedo inverse using Lapack's singular value decomposition (SVD) implementation.
+Uses some componentes from the Kinematic Dynamics Library (KDL) from OROCOS.
 Build to work with MoveIt!
 
 Developed by [Dave Coleman](dave@dav.ee) while at the University of Tokyo JSK lab in collaboration with Shunichi Nozawa and Kei Okada.
@@ -17,7 +17,6 @@ Developed by [Dave Coleman](dave@dav.ee) while at the University of Tokyo JSK la
 
  - Does not yet support mimic joints
  - Does not yet support locking joints externally
- - Does not yet support forward kinematics (use MoveIt's robot state)
 
 # Setup
 
@@ -42,7 +41,7 @@ Additionally you can customize the performance with the following parameters:
 ```
 kinematics_solver_max_solver_iterations:   # iterations for newton raphson method before trying a different seed state
 kinematics_solver_timeout:                 # amount of time allowed before giving up
-kinematics_solver_verbose:                 # show lots of console output 
+kinematics_solver_verbose:                 # show lots of console output
 kinematics_solver_debug_mode:              # similar to verbose but only shows matrix-related math debug output
 kinematics_solver_visualize_search:        # publish to rviz every step of the solver
 kinematics_solver_epsilon:                 # error tolerance between desired pose and current pose for termination condition
@@ -62,7 +61,7 @@ kinematics_solver_joint_velocity_max_ratio:# the fraction of a joint's total ran
 
 # Assumptions
 
-Note: this code assumes your jmg (joint model group) is in this order:
+Note: this code currently assumes your joint model group is in this order:
 
    TORSO
    ARM
@@ -70,9 +69,6 @@ Note: this code assumes your jmg (joint model group) is in this order:
    LEG
    LEG
 
-If its not, im not sure what will happen
-   
-It also assumes your left & right arms each share ``n`` number of torso joints, and those are the only shared joints on the whole robot
-  
-Assumes all planning groups have their root at the base_link (root link)
+It also assumes your left & right arms each share *N* number of torso joints, and those are the only shared joints on the whole robot
 
+Assumes all planning groups have their root at the base_link (root link)

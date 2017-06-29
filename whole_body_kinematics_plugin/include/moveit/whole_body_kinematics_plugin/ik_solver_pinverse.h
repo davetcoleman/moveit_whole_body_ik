@@ -64,15 +64,12 @@ public:
   /**
    * Constructor of the solver
    *
-   * @param chain the chain to calculate the inverse velocity
-   * kinematics for
-   * @param opt_pos the desired positions of the chain used by to resolve the redundancy
-   * @param weights the weights applied in the joint space
-   * @param eps if a singular value is below this value, its
-   * inverse is set to zero, default: 0.00001
-   * @param maxiter maximum iterations for the svd calculation,
-   * default: 150
-   * @param null_space_velocity_gain the null-space velocity gain
+   * @param opt_pos - the desired positions of the chain used to resolve the redundancy
+   * @param weights - the weights applied in the joint space
+   * @param eps - if a singular value is below this value, its
+   *              inverse is set to zero, default: 0.00001
+   * @param maxiter - maximum iterations for the svd calculation, default: 150
+   * @param null_space_velocity_gain - the null-space velocity gain
    *
    */
   IkSolverPinverse(int num_tips, int num_joints, JntArray joint_min, JntArray joint_max, JntArray weights, const Jacobian2d& jacobian,
@@ -80,16 +77,14 @@ public:
 
   ~IkSolverPinverse() {};
 
-  int cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian, 
+  int cartesianToJoint(const JntArray& q_in, const JntArray& xdot_in, Jacobian2d& jacobian,
                        JntArray& qdot_out, JntArray& prev_H, bool debug_mode, bool is_first_iteration, double &null_space_vel_gain);
 
   bool weightedLeastNorm(const JntArray& q_in, Jacobian2d& jacobian, JntArray& prev_H, bool debug_mode, bool is_first_iteration);
 
   /**
-   *Set joint weights for optimization criterion
-   *
-   *@param weights the joint weights
-   *
+   * Set joint weights for optimization criterion
+   * @param weights - the joint weights
    */
   int setWeights(const JntArray &weights);
 
@@ -100,6 +95,7 @@ public:
   void formatNum(double num) const;
 
 private:
+
   Jacobian2d original_jacobian;
   SVD_HH svd_;
   std::vector<JntArray> U;
@@ -133,4 +129,3 @@ typedef boost::shared_ptr<whole_body_kinematics_plugin::IkSolverPinverse> IkSolv
 
 } // namespace
 #endif
-

@@ -49,7 +49,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <moveit_msgs/GetPositionFK.h>
 #include <moveit_msgs/GetPositionIK.h>
-#include <moveit_msgs/GetKinematicSolverInfo.h>
+#include <moveit_msgs/KinematicSolverInfo.h>
 #include <moveit_msgs/MoveItErrorCodes.h>
 
 // KDL
@@ -196,7 +196,7 @@ public:
     tip_frames.push_back(tip_frame);
     initialize(robot_description, group_name, base_name, tip_frames, search_discretization);
   }
- 
+
   virtual bool initialize(const std::string &robot_description,
     const std::string &group_name,
     const std::string &base_name,
@@ -234,7 +234,7 @@ public:
    *          supported.
    * \return True if the group is supported, false if not.
    */
-  const bool supportsGroup(const moveit::core::JointModelGroup *jmg, std::string* error_text_out = NULL) const;
+  bool supportsGroup(const moveit::core::JointModelGroup *jmg, std::string* error_text_out = NULL) const;
 
   // Simple helper
   void poseEigenToKDL(const Eigen::Affine3d &e, KDL::Frame &k) const;
@@ -392,7 +392,7 @@ private:
   // Variables for use in newtonRaphsonIterator() ------------------------
   struct CartesionToJointData
   {
-    CartesionToJointData(int dimension, int num_poses) 
+    CartesionToJointData(int dimension, int num_poses)
       : qdot_(dimension),
         qdot_cache_(dimension),
         prev_H_(dimension),

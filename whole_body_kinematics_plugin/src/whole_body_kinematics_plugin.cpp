@@ -211,7 +211,7 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
     }
     else
     {
-      
+
       ROS_ERROR_STREAM_NAMED("whole_body_ik","This is the Whole Body kinematics plugin, and it does not support mimic/redundant/non-revolute or prismatic joints. Bad join name: " << joint_model_group_->getJointModelNames()[i];);
     }
   }
@@ -826,7 +826,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     {
       for (std::size_t i = 0; i < ctj_data_->qdot_.rows(); ++i)
       {
-        if (isnan(ctj_data_->qdot_(i)))
+        if (std::isnan(ctj_data_->qdot_(i)))
         {
           std::cout << "FOUND NAN " << std::endl;
           ctj_data_->qdot_.print();
@@ -943,7 +943,7 @@ bool WholeBodyKinematicsPlugin::getPositionFK(const std::vector<std::string> &li
   return false;
 }
 
-const bool WholeBodyKinematicsPlugin::supportsGroup(const moveit::core::JointModelGroup *jmg,
+bool WholeBodyKinematicsPlugin::supportsGroup(const moveit::core::JointModelGroup *jmg,
                                                     std::string* error_text_out) const
 {
   return true;
@@ -964,4 +964,3 @@ void WholeBodyKinematicsPlugin::poseEigenToKDL(const Eigen::Affine3d &e, KDL::Fr
 
 
 } // namespace
-
