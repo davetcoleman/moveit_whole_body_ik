@@ -37,7 +37,7 @@
 
 
 #include <moveit/whole_body_kinematics_plugin/whole_body_kinematics_plugin.h>
-#include <class_loader/class_loader.h>
+#include <class_loader/class_loader.hpp>
 
 #include <tf_conversions/tf_kdl.h>
 #include <tf_conversions/tf_eigen.h>
@@ -137,8 +137,8 @@ bool WholeBodyKinematicsPlugin::initialize(const std::string &robot_description,
 
   // Load URDF and SRDF --------------------------------------------------------------------
   rdf_loader::RDFLoader rdf_loader(robot_description_);
-  const boost::shared_ptr<srdf::Model> &srdf = rdf_loader.getSRDF();
-  const boost::shared_ptr<urdf::ModelInterface>& urdf_model = rdf_loader.getURDF();
+  const std::shared_ptr<srdf::Model> &srdf = rdf_loader.getSRDF();
+  const std::shared_ptr<urdf::ModelInterface>& urdf_model = rdf_loader.getURDF();
 
   if (!urdf_model || !srdf)
   {
@@ -547,7 +547,7 @@ int WholeBodyKinematicsPlugin::newtonRaphsonIterator(const KDL::JntArray& q_init
     for (std::size_t pose_id = 0; pose_id < kdl_poses.size(); ++pose_id)
     {
       // Do forward kinematics to get new EE pose location
-      Eigen::Affine3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
+      Eigen::Isometry3d eef_pose = robot_state_->getGlobalLinkTransform(tip_frames_[pose_id]);
 
       // Bring the pose to the frame of the IK solver TODO this isn't necessary if base frame is same as global link transform frame
       robot_state_->setToIKSolverFrame( eef_pose, getBaseFrame() );
