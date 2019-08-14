@@ -123,7 +123,7 @@ public:
    * \param tip_frames
    * \return true on success
    */
-  bool initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
+  bool initialize(const std::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
     const std::vector<std::string>& tip_frames, const robot_model::JointModelGroup *jmg);
 
   // For non-chain kinematics
@@ -187,7 +187,7 @@ private:
 
 };
 
-typedef boost::shared_ptr<JacobianGenerator> JacobianGeneratorPtr;
+typedef std::shared_ptr<JacobianGenerator> JacobianGeneratorPtr;
 
 }
 #endif

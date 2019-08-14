@@ -57,7 +57,7 @@ JacobianGenerator::~JacobianGenerator()
 {
 }
 
-bool JacobianGenerator::initialize(const boost::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
+bool JacobianGenerator::initialize(const std::shared_ptr<urdf::ModelInterface>& urdf_model, const robot_model::RobotModelPtr robot_model,
   const std::vector<std::string>& tip_frames, const robot_model::JointModelGroup *jmg)
 {
   // See README.md for notes on assumptions
@@ -691,8 +691,8 @@ bool JacobianGenerator::getJacobian(const robot_state::RobotStatePtr state, cons
   const robot_model::JointModel* root_joint_model = group->getJointModels()[0];//group->getJointRoots()[0];
   const robot_model::LinkModel* root_link_model = root_joint_model->getParentLinkModel();
 
-  // Choose overall coordiante frame (base or end effector)
-  reference_transform_ = root_link_model ? state->getGlobalLinkTransform(root_link_model).inverse() : Eigen::Affine3d::Identity();
+  // Choose overall coordinate frame (base or end effector)
+  reference_transform_ = root_link_model ? state->getGlobalLinkTransform(root_link_model).inverse() : Eigen::Isometry3d::Identity();
   //reference_transform_ = state->getGlobalLinkTransform(link).inverse();
 
   //rows_ = 6;
@@ -771,7 +771,7 @@ bool JacobianGenerator::getJacobian(const robot_state::RobotStatePtr state, cons
         jacobian.block<3,1>(3,jacobian_column+2) = jacobian.block<3,1>(3,jacobian_column+2) + joint_axis_;
       }
       else
-        logError("Unknown type of joint in Jacobian computation");
+        ROS_ERROR("Unknown type of joint in Jacobian computation");
     } // if has variables
 
     // If we've reached the end of the chain
